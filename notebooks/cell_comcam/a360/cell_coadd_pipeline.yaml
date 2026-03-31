@@ -1,0 +1,13 @@
+description: Pipeline for cell-based coadd systematics and measurement.
+instrument: lsst.obs.lsst.LsstComCam
+
+tasks:
+  buildCellSystematics:
+    class: xlens.processor.build_cell_systematics.BuildCellSystematicsTask
+  measureCellCoadds:
+    class: xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe
+    config:
+      connections.coaddName: deep
+      anacal.do_noise_bias_correction: True
+      fpfs.do_noise_bias_correction: True
+      fpfs.sigma_shapelets1: 0.54

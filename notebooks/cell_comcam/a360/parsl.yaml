@@ -1,0 +1,39 @@
+LSST_VERSION: v30.0.4.rc1
+instrumnet: LSSTComCam
+
+pipelineYaml: "/global/u2/x/xiangchl/superonion/code/cell_coadd_pipeline.yaml"
+wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
+computeSite: work_queue
+
+numberOfRetries: 3
+requestMemory: 64000
+memoryMultiplier: 1
+
+pipetask:
+  cmdlineArgs: ["--register-dataset-types"]
+
+site:
+    local:
+        class: lsst.ctrl.bps.parsl.sites.Local
+        cores: 16
+        monitorEnable: true
+        monitorFilename: runinfo/monitoring.db
+    work_queue:
+        class: bps_parsl_sites.SlurmWorkQueue
+        nodes_per_block: 1
+        max_blocks: 1
+        max_workers: 64
+        qos: debug
+        constraint: cpu
+        walltime: "0:30:00"  # HH:MM:SS
+        account: m1727
+        slurm_options: "--ntasks=64 --cpus-per-task=1 --mem-per-cpu=2000"
+        worker_optionss: ""
+        monitorEnable: true
+        monitorFilename: runinfo/monitoring.db
+
+payload:
+  payloadName: dp1/a360_anacal
+  butlerConfig: /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml
+  inCollection: u/mgorsuch/metadetect/a360_metadetect,u/mgorsuch/metadetect/a360_coadd,LSSTComCam/DP1,refcats/DM-39298/gaia_dr3_20230707
+  dataQuery: "skymap='lsst_cells_v1' AND instrument='LSSTComCam'"
