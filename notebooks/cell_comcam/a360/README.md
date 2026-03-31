@@ -19,24 +19,26 @@ pipe/tasks repos with cell-based coadd support.
 
 | File | Description |
 |---|---|
-| `cell_coadd_pipeline.yaml` | Pipeline definition with two tasks: `buildCellSystematics` (mask, noise correlation, PSF) and `measureCellCoadds` (detection + forced measurement) |
-| `parsl.yaml` | BPS/Parsl configuration for batch submission on Perlmutter |
-| `abell360_cluster_cell.ipynb` | Analysis notebook: tangential shear profile and mass map |
+| [`cell_coadd_pipeline.yaml`](cell_coadd_pipeline.yaml) | Pipeline definition with two tasks: `buildCellSystematics` (mask, noise correlation, PSF) and `measureCellCoadds` (detection + forced measurement) |
+| [`parsl.yaml`](parsl.yaml) | BPS/Parsl configuration for batch submission on Perlmutter |
+| [`abell360_cluster_cell.ipynb`](abell360_cluster_cell.ipynb) | Analysis notebook: tangential shear profile and mass map |
 
 ## Running the Pipeline
 
 ### 1. Update output collection
 
-Before submitting, edit `parsl.yaml` and change the `payloadName` to a unique
-output collection:
+Before submitting, edit [`parsl.yaml`](parsl.yaml) and change the
+`payloadName` to a unique output collection:
 
 ```yaml
 payload:
   payloadName: dp1/a360_anacal    # <-- change this, e.g. dp1/a360_anacal_v2
 ```
 
-The output will be written to
-`u/<username>/<payloadName>/<timestamp>` in the DP1 butler repo.
+BPS writes the output to `u/$USER/<payloadName>/<timestamp>` in the DP1
+butler repo. For example, with `payloadName: dp1/a360_anacal` and user
+`xiangchl`, the output collection is
+`u/xiangchl/dp1/a360_anacal/20260331T014745Z`.
 
 ### 2. Submit with BPS
 
@@ -46,7 +48,9 @@ bps submit parsl.yaml
 ```
 
 This submits a Slurm job that processes all available patches (~49 patches
-across tracts 10463 and 10464). The pipeline runs two tasks per patch:
+across tracts 10463 and 10464). The pipeline defined in
+[`cell_coadd_pipeline.yaml`](cell_coadd_pipeline.yaml) runs two tasks per
+patch:
 
 1. **`buildCellSystematics`** (~25s per patch): builds the mask (including
    GAIA bright star masking), noise correlation function, and stacked PSF
@@ -80,6 +84,8 @@ for row in cursor.fetchall():
 
 ### 4. Parsl configuration notes
 
+Key parameters in [`parsl.yaml`](parsl.yaml):
+
 | Parameter | Value | Notes |
 |---|---|---|
 | `max_workers` | 64 | Number of concurrent tasks per node |
@@ -89,7 +95,8 @@ for row in cursor.fetchall():
 
 ### 5. Single-patch test run (without BPS)
 
-For quick testing on a single patch:
+For quick testing on a single patch using
+[`cell_coadd_pipeline.yaml`](cell_coadd_pipeline.yaml):
 
 ```bash
 pipetask run \
@@ -109,7 +116,8 @@ pipetask run \
   `assembleCellCoadd`, 4 bands: g, r, i, z, with 1 noise realization)
 - **Warps**: `u/mgorsuch/metadetect/a360_coadd`
 - **Calibrations**: `LSSTComCam/DP1`
-- **GAIA stars**: `refcats/DM-39298/gaia_dr3_20230707` (for bright star masking)
+- **GAIA stars**: `refcats/DM-39298/gaia_dr3_20230707` (for bright star
+  masking)
 
 ## Output Catalogs
 
@@ -128,9 +136,9 @@ with columns including:
 
 ## Analysis Notebook
 
-Open `abell360_cluster_cell.ipynb` in JupyterLab using the
-**"LSST v30.0.4.rc1"** kernel. Before running, update the
-`anacal_collection` variable to match your output collection:
+Open [`abell360_cluster_cell.ipynb`](abell360_cluster_cell.ipynb) in
+JupyterLab using the **"LSST v30.0.4.rc1"** kernel. Before running, update
+the `anacal_collection` variable to match your output collection:
 
 ```python
 anacal_collection = "u/<username>/dp1/a360_anacal"
