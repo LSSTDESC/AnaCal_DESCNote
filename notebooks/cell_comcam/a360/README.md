@@ -9,7 +9,7 @@ cluster field.
 Source the LSST v30.0.4.rc1 environment:
 
 ```bash
-source ~/setup_lsst_v30.bash
+source setup_lsst_v30.bash
 ```
 
 This sets up the LSST stack, `xlens`, `anacal`, and the custom DRP
