@@ -155,15 +155,35 @@ The notebook performs:
 
 ## Cleaning Up
 
-To remove output collections from the butler:
+To remove output collections from the butler, run the following script
+(replace `<username>` with your username and `<payloadName>` with the
+payload name used in [`parsl.yaml`](parsl.yaml)):
 
-```python
+```bash
+python3 -c "
 import lsst.daf.butler as dafButler
+
+butler_config = '/global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml'
 butler = dafButler.Butler(butler_config, writeable=True)
-# List your collections
-for c in sorted(butler.registry.queryCollections('u/<username>/dp1/*')):
-    print(c)
-# Remove (CHAINED first, then RUN)
-# butler.registry.removeCollection("u/<username>/dp1/a360_anacal")
-# butler.removeRuns(["u/<username>/dp1/a360_anacal/<timestamp>"])
+
+# List collections to remove
+pattern = 'u/<username>/<payloadName>*'
+own = [c for c in sorted(butler.registry.queryCollections(pattern))
+       if c.startswith('u/<username>/')]
+print(f'Found {len(own)} collections:')
+for c in own:
+    print(f'  {c}')
+
+# Remove CHAINED first, then RUN
+chained = [c for c in own if butler.collections.get_info(c).type.name == 'CHAINED']
+runs = [c for c in own if butler.collections.get_info(c).type.name == 'RUN']
+for c in chained:
+    butler.registry.removeCollection(c)
+for c in runs:
+    butler.removeRuns([c])
+print(f'Removed {len(chained)} chained + {len(runs)} run collections')
+"
+
+# Also clean up leftover files on disk
+rm -rf /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/u/<username>/<payloadName>/
 ```
