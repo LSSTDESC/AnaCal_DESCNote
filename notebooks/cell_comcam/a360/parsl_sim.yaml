@@ -1,7 +1,7 @@
 LSST_VERSION: v30.0.4.rc1
 instrumnet: LSSTComCam
 
-pipelineYaml: "/global/homes/x/xiangchl/superonion/code/AnaCal_DESCNote/notebooks/cell_comcam/a360/measure_pipeline.yaml"
+pipelineYaml: "/global/homes/x/xiangchl/superonion/code/AnaCal_DESCNote/notebooks/cell_comcam/a360/measure_pipeline_sim.yaml"
 wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
 computeSite: work_queue
 
@@ -33,7 +33,7 @@ site:
         monitorFilename: runinfo/monitoring.db
 
 payload:
-  payloadName: dp1/a360_anacal
+  payloadName: dp1/a360_anacal_sim_80_0
   butlerConfig: /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml
   inCollection: u/mgorsuch/metadetect/a360_extra_cells,u/mgorsuch/metadetect/a360_metadetect,u/mgorsuch/metadetect/a360_coadd,LSSTComCam/DP1,refcats/DM-39298/gaia_dr3_20230707
   dataQuery: "skymap='lsst_cells_v1' AND instrument='LSSTComCam'"
