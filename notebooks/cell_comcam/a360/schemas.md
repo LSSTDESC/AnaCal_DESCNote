@@ -24,7 +24,7 @@ kernel of width
 $$\sigma_{\rm shapelets1} = 0.54\,\text{arcsec}$$
 
 set via `MeasureCellCoaddsPipeConfig.fpfs.sigma_shapelets1 = 0.54` in
-`cell_coadd_pipeline.yaml`. This `σ` enters the Gaussian-aperture flux
+`measure_pipeline.yaml`. This `σ` enters the Gaussian-aperture flux
 relation `flux = m00 · 2π σ²` (so the per-band fluxes inherit the same
 kernel width).
 
@@ -113,7 +113,7 @@ For each band `b ∈ {g, r, i, z}` the catalog has:
 ## 5. Photo-z point estimates (7 keys × 5 distortions = 35 columns)
 
 Joined onto the catalog by `MergePipe._join_photoz` (`object_id`-aligned)
-from the per-patch `deep_cell_coadd_anacal_fzb_point` produced by
+from the per-patch `deep_coadd_cell_anacal_fzb_point` produced by
 `photoZPipe`. Each row of the photo-z table holds five FlexZBoost
 estimates: the undistorted call (`_0`) plus the four `±dg` distortions
 in `g1` (`_1p`, `_1m`) and `g2` (`_2p`, `_2m`), evaluated at

@@ -19,9 +19,11 @@ pipe/tasks repos with cell-based coadd support.
 
 | File | Description |
 |---|---|
-| [`cell_coadd_pipeline.yaml`](cell_coadd_pipeline.yaml) | Full pipeline definition: `measureCellCoadds` (detection + per-band forced FPFS), `photoZ` (FlexZBoost on the per-patch AnaCal catalog), and `mergeFpfs` (per-tract band combination + photo-z join + WCS distortion correction) |
-| [`cell_coadd_pipeline_fixed_weights.yaml`](cell_coadd_pipeline_fixed_weights.yaml) | Re-runs only `mergeFpfs` with `band_weights` pinned to the values derived from `1 / median(flux_err)^2` (g/r/i/z = 0.5288 / 0.3305 / 0.1362 / 0.0045) on the existing merged sample |
+| [`measure_pipeline.yaml`](measure_pipeline.yaml) | Full pipeline: `buildCellSystematics` (mask + PSF + noise-correlation stacks), `measureCellCoadds` (detection + per-band forced FPFS), `photoZ` (FlexZBoost on the per-patch AnaCal catalog), and `mergeFpfs` (per-tract band combination + photo-z join + WCS distortion correction) |
+| [`measure_pipeline_sim.yaml`](measure_pipeline_sim.yaml) | Variant pipeline for image-simulation inputs |
 | [`parsl.yaml`](parsl.yaml) | BPS/Parsl configuration for batch submission on Perlmutter |
+| [`parsl_sim.yaml`](parsl_sim.yaml) | BPS/Parsl configuration for the simulation pipeline |
+| [`export_data.py`](export_data.py) | Helper to export cell coadds + systematics masks to scratch |
 | [`abell360_cluster_cell.ipynb`](abell360_cluster_cell.ipynb) | Per-patch (pre-merge) analysis notebook: tangential shear profile and aperture-mass map, reproducing the band combination + WCS correction inline |
 | [`abell360_cluster_treecorr.ipynb`](abell360_cluster_treecorr.ipynb) | TreeCorr-based tangential / cross shear profile from the per-tract merged catalogs (`a360_merged_tract*.parq`) |
 | [`schemas.md`](schemas.md) | Schema documentation for the per-tract merged catalogs produced by `mergeFpfs` |
@@ -29,28 +31,43 @@ pipe/tasks repos with cell-based coadd support.
 
 ## Pipeline tasks
 
-[`cell_coadd_pipeline.yaml`](cell_coadd_pipeline.yaml) defines three tasks:
+[`measure_pipeline.yaml`](measure_pipeline.yaml) defines four tasks.
+Tasks 2–4 share the connection template `inputName = deep_coadd_cell`
+so their chained dataset names are `deep_coadd_cell_*`.
 
-1. **`measureCellCoadds`** (`xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe`):
+1. **`buildCellSystematics`** (`xlens.processor.build_cell_systematics.BuildCellSystematicsTask`):
+   for every patch, stitches the per-band cell coadds with their stored
+   PSFs + noise realizations, looks up GAIA bright stars in
+   `refcats/DM-39298/gaia_dr3_20230707`, and writes three per-patch
+   systematics products consumed downstream by `measureCellCoadds`:
+
+   | Output dataset | Storage class | Notes |
+   |---|---|---|
+   | `deep_coadd_cell_systematics_mask` | `Mask` | BAD-pixel composite + GAIA bright-star mask |
+   | `deep_coadd_cell_systematics_noisecorr_6bands` | `NumpyArray` | `(6, npix, npix)` noise correlation stamps per band (`npix=49` default) |
+   | `deep_coadd_cell_systematics_psfcentered_6bands` | `NumpyArray` | `(6, npix, npix)` centered PSF stamps per band |
+
+2. **`measureCellCoadds`** (`xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe`):
    detects sources on i-band cell coadds (250×250 outer, keeping only inner
    150×150) and runs forced FPFS measurement on all bands (g, r, i, z).
-   Outputs the per-patch `deep_cell_coadd_anacal_catalog`.
+   Reads `deep_coadd_cell_predetection` and `deep_coadd_cell_systematics_mask`;
+   outputs the per-patch `deep_coadd_cell_anacal_catalog`.
    Key configs: `anacal.do_noise_bias_correction = True`,
    `fpfs.do_noise_bias_correction = True`, `fpfs.sigma_shapelets1 = 0.54`.
-2. **`photoZ`** (`xlens.processor.photoz.photoZPipe`): runs FlexZBoost on the
+3. **`photoZ`** (`xlens.processor.photoz.photoZPipe`): runs FlexZBoost on the
    per-patch AnaCal catalog using `model_4bands_fzboost.pkl`. Outputs the
-   per-patch `deep_cell_coadd_anacal_fzb_point` (point estimates) — and
-   optionally `deep_cell_coadd_anacal_fzb_pdfs` (full PDFs, off by default).
+   per-patch `deep_coadd_cell_anacal_fzb_point` (point estimates) — and
+   optionally `deep_coadd_cell_anacal_fzb_pdfs` (full PDFs, off by default).
    Configured with `mag_zero = 31.4`, `flux_name = fpfs1`,
    `bands = griz`, `ref_band = i`, `do_distortions = True` (so the catalog
    carries the four `±dg1`, `±dg2` photo-z perturbations needed for the
    selection-response finite difference).
-3. **`mergeFpfs`** (`xlens.processor.merge.MergePipe`): per-tract task that
+4. **`mergeFpfs`** (`xlens.processor.merge.MergePipe`): per-tract task that
    stacks the per-patch (anacal + photo-z) outputs, combines the multi-band
    shapelet moments into `fpfs1_e1/e2` (and their shear derivatives) using
    `band_weights` (defaults to `1 / median(flux_err)^2`), applies the local
    tract-WCS distortion correction in place, and joins the photo-z point
-   columns by `object_id`. Outputs `deep_cell_coadd_anacal_catalog_merged`
+   columns by `object_id`. Outputs `deep_coadd_cell_anacal_merged`
    (one parquet table per tract). Schema: see [`schemas.md`](schemas.md).
    Configured with `mag_zero = 31.4`, `fpfs_c0 = 8.4`, `bands = ["g","r","i","z"]`.
 
@@ -83,10 +100,12 @@ across tracts 10463 and 10464) plus the per-tract `mergeFpfs` quanta.
 
 ### 3. Re-running mergeFpfs with pinned band weights
 
-Once the full pipeline has produced merged catalogs, you can re-run only
-`mergeFpfs` with the `band_weights` pinned to the values derived from
-`1 / median(flux_err)^2` using
-[`cell_coadd_pipeline_fixed_weights.yaml`](cell_coadd_pipeline_fixed_weights.yaml):
+The `mergeFpfs` task already accepts an explicit `band_weights` list in
+`measure_pipeline.yaml`; the current file pins
+g/r/i/z = 0.5288 / 0.3305 / 0.1362 / 0.0045 (the values derived from
+`1 / median({band}_flux_fpfs1_err)^2` on the full Abell-360 sample). To
+re-run only `mergeFpfs` against an existing per-patch run, point `-i` at
+that input collection and limit the pipeline to that step:
 
 ```bash
 pipetask run \
@@ -94,7 +113,7 @@ pipetask run \
   -i u/$USER/dp1/a360_anacal \
   -o u/$USER/dp1/a360_anacal_fixedw \
   --output-run "u/$USER/dp1/a360_anacal_fixedw/$(date -u +%Y%m%dT%H%M%SZ)" \
-  -p cell_coadd_pipeline_fixed_weights.yaml \
+  -p measure_pipeline.yaml#mergeFpfs \
   -d "skymap='lsst_cells_v1' AND instrument='LSSTComCam'" \
   -j 16 \
   --register-dataset-types
@@ -129,23 +148,35 @@ Key parameters in [`parsl.yaml`](parsl.yaml):
 
 | Parameter | Value | Notes |
 |---|---|---|
-| `max_workers` | 64 | Number of concurrent tasks per node |
-| `qos` | debug | 30-min limit, higher priority; use `regular` for longer runs |
-| `walltime` | 0:30:00 | Sufficient for ~100 quanta on one node |
-| `max_blocks` | 1 | Number of Slurm jobs (nodes); increase for more parallelism |
+| `max_workers` | 8 | Concurrent tasks per node (work_queue worker pool) |
+| `qos` | debug | 30-min cap, higher priority; switch to `regular` for longer runs |
+| `walltime` | 0:30:00 | Capped by `debug`; raise when moving to `regular` |
+| `nodes_per_block` | 1 | Nodes in each Slurm allocation |
+| `max_blocks` | 8 | Independent sbatch submissions (condor-style job array); scale to add nodes |
+| `slurm_options` `--ntasks-per-node=8 --mem=0` | — | 8 single-CPU tasks per node sharing the whole-node RAM pool |
+
+Quanta are farmed out across all blocks dynamically by the work_queue
+master, so each new sbatch that lands picks up work immediately. To
+launch e.g. 16 nodes in parallel, just bump `max_blocks` to 16.
 
 ### 6. Single-patch test run (without BPS)
 
 For quick testing on a single patch using
-[`cell_coadd_pipeline.yaml`](cell_coadd_pipeline.yaml):
+[`measure_pipeline.yaml`](measure_pipeline.yaml). The CUDA env vars
+suppress the libcuda-driver probe that otherwise stalls on login nodes
+without a GPU (xgboost / JAX wheels are CUDA-enabled and would spawn a
+worker thread that sits in `D` state).
 
 ```bash
+export CUDA_VISIBLE_DEVICES=""
+export JAX_PLATFORMS=cpu
+
 pipetask run \
   -b /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml \
-  -i u/mgorsuch/metadetect/a360_metadetect,u/mgorsuch/metadetect/a360_coadd,LSSTComCam/DP1,refcats/DM-39298/gaia_dr3_20230707 \
+  -i u/mgorsuch/metadetect/a360_extra_cells,u/mgorsuch/metadetect/a360_metadetect,u/mgorsuch/metadetect/a360_coadd,LSSTComCam/DP1,refcats/DM-39298/gaia_dr3_20230707 \
   -o u/$USER/dp1/a360_test \
   --output-run "u/$USER/dp1/a360_test/$(date -u +%Y%m%dT%H%M%SZ)" \
-  -p cell_coadd_pipeline.yaml \
+  -p measure_pipeline.yaml \
   -d "skymap='lsst_cells_v1' AND instrument='LSSTComCam' AND tract=10463 AND patch=31" \
   -j 16 \
   --register-dataset-types
@@ -160,22 +191,23 @@ pipetask run \
 - **GAIA stars**: `refcats/DM-39298/gaia_dr3_20230707` (for bright star
   masking)
 - **Photo-z model**: `model_4bands_fzboost.pkl` (FlexZBoost trained on g,
-  r, i, z; path baked into `cell_coadd_pipeline.yaml`)
+  r, i, z; path set by the `photoZ.model_path` config field in
+  [`measure_pipeline.yaml`](measure_pipeline.yaml))
 
 ## Output Catalogs
 
 The pipeline produces:
 
-- **Per-patch** `deep_cell_coadd_anacal_catalog` (`measureCellCoadds`):
+- **Per-patch** `deep_coadd_cell_anacal_catalog` (`measureCellCoadds`):
   detection + per-band forced measurement, with columns including
   `ra`, `dec`, `{band}_flux_fpfs1`, `{band}_dflux_fpfs1_dg1/2`,
   `{band}_flux_fpfs1_err`, `{band}_fpfs1_m00/m20/m22c/m22s`,
   `{band}_fpfs1_e1/e2`, `wsel`, `dwsel_dg1/2`, `mask_value`,
   `is_primary`, `block_id`, `object_id`.
-- **Per-patch** `deep_cell_coadd_anacal_fzb_point` (`photoZ`):
+- **Per-patch** `deep_coadd_cell_anacal_fzb_point` (`photoZ`):
   FlexZBoost point estimates with five `±dg` distortions per object
   (`zbest_0/_1p/_1m/_2p/_2m`, `zmode_*`, `z025/160/500/840/975_*`).
-- **Per-tract** `deep_cell_coadd_anacal_catalog_merged` (`mergeFpfs`):
+- **Per-tract** `deep_coadd_cell_anacal_merged` (`mergeFpfs`):
   band-combined and WCS-corrected `fpfs1_e1/e2` (+ shear responses),
   band-combined `fpfs1_m00/m20` (+ shear responses), per-band fluxes
   and flux derivatives, `wsel`, `dwsel_dg1/2`, plus the joined photo-z
@@ -187,7 +219,7 @@ The pipeline produces:
 Open the notebooks in JupyterLab using the **"LSST v30.0.4.rc1"** kernel.
 
 - [`abell360_cluster_cell.ipynb`](abell360_cluster_cell.ipynb): works
-  directly on the per-patch `deep_cell_coadd_anacal_catalog`, reproducing
+  directly on the per-patch `deep_coadd_cell_anacal_catalog`, reproducing
   the band combination + WCS correction inline. Update the
   `anacal_collection` and `butler_config` variables at the top to match
   your run. Steps: catalog loading + magnitudes; sky coverage and GAIA

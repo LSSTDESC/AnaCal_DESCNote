@@ -20,15 +20,31 @@ site:
         monitorFilename: runinfo/monitoring.db
     work_queue:
         class: bps_parsl_sites.SlurmWorkQueue
+        # NB: `bps_parsl_sites.SlurmWorkQueue` only recognizes the keys
+        # listed in its docstring (nodes_per_block, walltime, qos,
+        # constraint, scheduler_options, provider_options, ...).  Extra
+        # keys like `slurm_options`, `max_blocks`, `max_workers` are
+        # SILENTLY IGNORED.  Set sbatch flags via `scheduler_options`
+        # and parsl provider knobs via `provider_options`.
         nodes_per_block: 1
-        max_blocks: 1
-        max_workers: 64
         qos: debug
         constraint: cpu
-        walltime: "0:30:00"  # HH:MM:SS
-        account: m1727
-        slurm_options: "--ntasks=64 --cpus-per-task=1 --mem-per-cpu=1800"
-        worker_optionss: ""
+        walltime: "0:30:00"  # HH:MM:SS  (debug qos cap)
+        scheduler_options: |
+          #SBATCH --account=m1727
+          #SBATCH --ntasks-per-node=8
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem=0
+        # max_blocks = condor-style array; each block is one sbatch
+        # submission of one node.  Bump to add more nodes.
+        provider_options:
+          init_blocks: 8
+          min_blocks: 0
+          max_blocks: 8
+          parallelism: 1.0
+        # `--cores=8` tells the work_queue worker it has 8 cores to fill
+        # with concurrent pipetask quanta (matches --ntasks-per-node=8).
+        worker_options: "--cores=8"
         monitorEnable: true
         monitorFilename: runinfo/monitoring.db
 
