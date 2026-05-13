@@ -5,45 +5,28 @@ pipelineYaml: "/global/homes/x/xiangchl/superonion/code/AnaCal_DESCNote/notebook
 wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
 computeSite: work_queue
 
-numberOfRetries: 3
-requestMemory: 64000
-memoryMultiplier: 1
-
 pipetask:
   cmdlineArgs: ["--register-dataset-types"]
 
 site:
     local:
         class: lsst.ctrl.bps.parsl.sites.Local
-        cores: 16
+        cores: 1
         monitorEnable: true
         monitorFilename: runinfo/monitoring.db
     work_queue:
         class: bps_parsl_sites.SlurmWorkQueue
-        # NB: `bps_parsl_sites.SlurmWorkQueue` only recognizes the keys
-        # listed in its docstring (nodes_per_block, walltime, qos,
-        # constraint, scheduler_options, provider_options, ...).  Extra
-        # keys like `slurm_options`, `max_blocks`, `max_workers` are
-        # SILENTLY IGNORED.  Set sbatch flags via `scheduler_options`
-        # and parsl provider knobs via `provider_options`.
         nodes_per_block: 1
-        qos: debug
+        cores_per_node: 8        # → #SBATCH --cpus-per-task=8
+        mem_per_node: 32        # → #SBATCH --mem=32g  (whole-block total; ~4 GB/quantum × 8)
+        qos: shared
         constraint: cpu
-        walltime: "0:30:00"  # HH:MM:SS  (debug qos cap)
-        scheduler_options: |
-          #SBATCH --account=m1727
-          #SBATCH --ntasks-per-node=8
-          #SBATCH --cpus-per-task=1
-          #SBATCH --mem=0
-        # max_blocks = condor-style array; each block is one sbatch
-        # submission of one node.  Bump to add more nodes.
+        walltime: "4:00:00"     # HH:MM:SS
+        account: m1727
         provider_options:
+          max_blocks: 8
           init_blocks: 8
           min_blocks: 0
-          max_blocks: 8
-          parallelism: 1.0
-        # `--cores=8` tells the work_queue worker it has 8 cores to fill
-        # with concurrent pipetask quanta (matches --ntasks-per-node=8).
         worker_options: "--cores=8"
         monitorEnable: true
         monitorFilename: runinfo/monitoring.db
@@ -52,4 +35,13 @@ payload:
   payloadName: dp1/a360_anacal
   butlerConfig: /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml
   inCollection: u/mgorsuch/metadetect/a360_extra_cells,u/mgorsuch/metadetect/a360_metadetect,u/mgorsuch/metadetect/a360_coadd,LSSTComCam/DP1,refcats/DM-39298/gaia_dr3_20230707
-  dataQuery: "skymap='lsst_cells_v1' AND instrument='LSSTComCam'"
+  # tract=10705 patches 8,9 omitted: they have no deep_coadd_cell_predetection
+  # in the input collections, so measureCellCoadds can't run on them.
+  dataQuery: >
+    (skymap='lsst_cells_v1')
+    AND (band in ('g','r','i','z'))
+    AND (
+      (tract=10463 AND patch in (30,31,32,33,34,40,41,42,43,44,50,51,52,53,54,60,61,62,63,64,70,71,72,73,74,80,81,82,83,84,90,91,92,93,94))
+      OR (tract=10464 AND patch in (37,38,39,47,48,49,57,58,59,67,68,69,77,78,79,87,88,89,97,98,99))
+      OR (tract=10704 AND patch in (0,1,2,3,4,5))
+    )

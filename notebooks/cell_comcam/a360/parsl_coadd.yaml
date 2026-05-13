@@ -1,7 +1,7 @@
 LSST_VERSION: v30.0.4.rc1
 instrumnet: LSSTComCam
 
-pipelineYaml: "/global/homes/x/xiangchl/superonion/code/AnaCal_DESCNote/notebooks/cell_comcam/a360/measure_pipeline_sim.yaml"
+pipelineYaml: "/global/homes/x/xiangchl/superonion/code/AnaCal_DESCNote/notebooks/cell_comcam/a360/measure_pipeline_coadd.yaml"
 wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
 computeSite: work_queue
 
@@ -18,24 +18,24 @@ site:
         # NERSC debug qos: whole-node exclusive, 30-min cap, max 5 submitted.
         class: bps_parsl_sites.SlurmWorkQueue
         nodes_per_block: 1
-        cores_per_node: 128     # whole 128-core node (debug bills you for it anyway)
-        qos: debug
+        cores_per_node: 64
+        qos: regular
         constraint: cpu
         exclusive: true
-        walltime: "0:30:00"     # HH:MM:SS  (debug qos cap)
+        walltime: "4:30:00"
         account: m1727
         provider_options:
           init_blocks: 1
           min_blocks: 0
           max_blocks: 1
-        worker_options: "--cores=128"
+        worker_options: "--cores=64"
         monitorEnable: true
         monitorFilename: runinfo/monitoring.db
 
 payload:
-  payloadName: dp1/a360_anacal_sim_80_0
+  payloadName: dp1/a360_anacal_coadd
   butlerConfig: /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml
-  inCollection: u/xiangchl/dp1/a360_anacal
+  inCollection: LSSTComCam/DP1,refcats/DM-39298/gaia_dr3_20230707
   dataQuery: >
     (skymap='lsst_cells_v1')
     AND (band in ('g','r','i','z'))

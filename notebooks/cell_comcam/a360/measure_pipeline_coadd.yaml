@@ -1,25 +1,30 @@
 description: |
-  Cell-based coadd systematics, FPFS measurement, photo-z, and
-  tract-level merge.
+  Anacal measurement on REAL deep_coadd exposures (not cell coadds, not
+  simulations).
 
 instrument: lsst.obs.lsst.LsstComCam
 
 tasks:
-  buildCellSystematics:
-    class: xlens.processor.build_cell_systematics.BuildCellSystematicsTask
+  buildSystematics:
+    class: xlens.processor.build_systematics.BuildSystematicsTask
 
-  measureCellCoadds:
-    class: xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe
+  measureCoadds:
+    class: xlens.processor.measure_coadds.MeasureCoaddsPipe
     config:
-      connections.inputName: deep_coadd_cell
+      use_sim: False
+      connections.inputName: deep_coadd
+      connections.outName: deep_coadd
       anacal.do_noise_bias_correction: True
+      anacal.validate_psf: False
+      anacal.psf_model_type: patch
       fpfs.do_noise_bias_correction: True
+      fpfs.psf_model_type: patch
       fpfs.sigma_shapelets1: 0.54
 
   photoZ:
     class: xlens.processor.photoz.photoZPipe
     config:
-      connections.inputName: deep_coadd_cell
+      connections.inputName: deep_coadd
       model_path: /global/u2/x/xiangchl/superonion/code/model_4bands_fzboost.pkl
       mag_zero: 31.4
       flux_name: fpfs1
@@ -31,7 +36,7 @@ tasks:
   mergePatches:
     class: xlens.processor.merge.MergePipe
     config:
-      connections.inputName: deep_coadd_cell
+      connections.inputName: deep_coadd
       bands: ["g", "r", "i", "z"]
       band_weights:
         - 0.5287963721184084

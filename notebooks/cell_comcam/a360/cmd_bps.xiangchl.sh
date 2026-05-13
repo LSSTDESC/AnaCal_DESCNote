@@ -1,1 +1,1 @@
-PARSL_WORKER_BLOCK_ID=1 work_queue_worker login13 1024
+PARSL_WORKER_BLOCK_ID=0 work_queue_worker --cores=64 login13 1024

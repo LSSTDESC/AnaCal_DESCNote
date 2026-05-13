@@ -3,6 +3,12 @@
 
 export DRP_PIPE_DIR=/global/cfs/cdirs/lsst/groups/CL/A360_DP1/Metadetect/env/repos/v30/drp_pipe
 
+# Galaxy / star truth-catalog directory used by xlens.simulator (e.g.
+# OneDegSq.fits, flagship_*.fits, stars_*.fits).  galaxies.py falls back
+# to cwd if CATSIM_DIR is unset, which makes BPS workers fail to find the
+# files.
+export CATSIM_DIR=/global/u2/x/xiangchl/superonion/code/catsim
+
 source /cvmfs/sw.lsst.eu/almalinux-x86_64/lsst_distrib/v30.0.4.rc1/loadLSST-ext.sh
 setup lsst_distrib -t v30_0_4_rc1
 export OMP_NUM_THREADS=1
