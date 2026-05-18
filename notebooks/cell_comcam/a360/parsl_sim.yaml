@@ -8,6 +8,8 @@ computeSite: work_queue
 pipetask:
   cmdlineArgs: ["--register-dataset-types"]
 
+extraQgraphOptions: "--rebase"
+
 site:
     local:
         class: lsst.ctrl.bps.parsl.sites.Local
@@ -15,27 +17,27 @@ site:
         monitorEnable: true
         monitorFilename: runinfo/monitoring.db
     work_queue:
-        # NERSC debug qos: whole-node exclusive, 30-min cap, max 5 submitted.
+        # NERSC regular qos: whole-node exclusive, 1.5-hour walltime.
         class: bps_parsl_sites.SlurmWorkQueue
         nodes_per_block: 1
-        cores_per_node: 128     # whole 128-core node (debug bills you for it anyway)
-        qos: debug
+        cores_per_node: 256     # whole 256-core node
+        qos: regular
         constraint: cpu
         exclusive: true
-        walltime: "0:30:00"     # HH:MM:SS  (debug qos cap)
+        walltime: "1:30:00"     # HH:MM:SS
         account: m1727
         provider_options:
           init_blocks: 1
           min_blocks: 0
           max_blocks: 1
-        worker_options: "--cores=128"
+        worker_options: "--cores=256"
         monitorEnable: true
         monitorFilename: runinfo/monitoring.db
 
 payload:
-  payloadName: dp1/a360_anacal_sim_80_0
+  payloadName: dp1/a360_anacal_sim_coadd_80_0
   butlerConfig: /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml
-  inCollection: u/xiangchl/dp1/a360_anacal
+  inCollection: u/xiangchl/dp1/a360_anacal_coadd
   dataQuery: >
     (skymap='lsst_cells_v1')
     AND (band in ('g','r','i','z'))

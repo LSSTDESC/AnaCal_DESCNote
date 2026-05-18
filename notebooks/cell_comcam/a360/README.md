@@ -21,14 +21,14 @@ pipe/tasks repos with cell-based coadd support.
 |---|---|
 | [`measure_pipeline.yaml`](measure_pipeline.yaml) | Full pipeline on **cell coadds**: `buildCellSystematics` (mask + PSF + noise-correlation stacks), `measureCellCoadds` (detection + per-band forced FPFS), `photoZ` (FlexZBoost on the per-patch AnaCal catalog), and `mergePatches` (per-tract band combination + photo-z join + WCS distortion correction). Dataset namespace: `deep_coadd_cell_*` |
 | [`measure_pipeline_coadd.yaml`](measure_pipeline_coadd.yaml) | Same four-step pipeline but on **normal `deep_coadd` ExposureFs** (not cell coadds). Step 1 is `buildSystematics` (`xlens.processor.build_systematics.BuildSystematicsTask`), step 2 is `measureCoadds` (`xlens.processor.measure_coadds.MeasureCoaddsPipe`). Dataset namespace: `deep_coadd_*` (`deep_coadd_anacal_catalog`, `_fzb_point`, `_anacal_merged`). Uses `anacal.psf_model_type=patch` + `fpfs.psf_model_type=patch` (= old `use_average_psf=True`) and `anacal.validate_psf=False` |
-| [`measure_pipeline_sim.yaml`](measure_pipeline_sim.yaml) | Variant pipeline for image-simulation inputs |
-| [`parsl.yaml`](parsl.yaml) | BPS/Parsl configuration for `measure_pipeline.yaml` (cell-coadd) |
+| [`measure_pipeline_sim.yaml`](measure_pipeline_sim.yaml) | Image-simulation pipeline driven by deep-coadd systematics from `BuildSystematicsTask`. Three galaxy populations: `catsim2017` (dc1 → `deep_dc1_coadd_cell_80_0_*`), `flagship2025` (→ `deep_flagship_coadd_cell_80_0_*`), and `diffsky` (→ `deep_diffsky_coadd_cell_80_0_*`) |
+| [`parsl.yaml`](parsl.yaml) | BPS/Parsl configuration for `measure_pipeline.yaml#buildCellSystematics` (cell-systematics-only subset); `qos: debug`, whole-node |
 | [`parsl_coadd.yaml`](parsl_coadd.yaml) | BPS/Parsl configuration for `measure_pipeline_coadd.yaml` (normal `deep_coadd`); `payloadName: dp1/a360_anacal_coadd` |
-| [`parsl_sim.yaml`](parsl_sim.yaml) | BPS/Parsl configuration for the simulation pipeline |
+| [`parsl_sim.yaml`](parsl_sim.yaml) | BPS/Parsl configuration for `measure_pipeline_sim.yaml`; `inCollection: u/$USER/dp1/a360_anacal_coadd` (uses `BuildSystematicsTask` systematics); `payloadName: dp1/a360_anacal_sim_coadd_80_0` |
 | [`export_data.py`](export_data.py) | Helper to export cell coadds + systematics masks to scratch |
 | [`abell360_cluster_cell.ipynb`](abell360_cluster_cell.ipynb) | Per-patch (pre-merge) analysis notebook: tangential shear profile and aperture-mass map, reproducing the band combination + WCS correction inline |
 | [`abell360_cluster_coadd.ipynb`](abell360_cluster_coadd.ipynb) | Same analysis as `abell360_cluster_cell.ipynb` but on the `deep_coadd_*` outputs from `measure_pipeline_coadd.yaml` (collection `u/$USER/dp1/a360_anacal_coadd`) |
-| [`compare_a360_real_vs_sim.ipynb`](compare_a360_real_vs_sim.ipynb) | Per-band magnitude / colour / i-band size histograms comparing the real `a360_anacal_coadd` per-patch anacal catalog vs the sim `a360_anacal_sim_80_0` per-patch catalog |
+| [`compare_a360_real_vs_sim.ipynb`](compare_a360_real_vs_sim.ipynb) | 4-series comparison of real `a360_anacal_coadd` per-patch anacal catalog vs three sims (`catsim2017`, `flagship2025`, `diffsky`) from `a360_anacal_sim_coadd_80_0`: 1D mag + flux-err histograms, 2D corner plots (`r-i` vs `i`, `i-z` vs `i`, size vs `i`) with legend, and one RA/Dec scatter per sample |
 | [`abell360_cluster_treecorr.ipynb`](abell360_cluster_treecorr.ipynb) | TreeCorr-based tangential / cross shear profile from the per-tract merged catalogs (`a360_merged_tract*.parq`) |
 | [`schemas.md`](schemas.md) | Schema documentation for the per-tract merged catalogs produced by `mergePatches` |
 | [`abell360_reserved_star.ipynb`](abell360_reserved_star.ipynb) | PSF reserved-star residual diagnostics |
@@ -148,18 +148,18 @@ for row in cursor.fetchall():
 
 ### 5. Parsl configuration notes
 
-Key parameters in [`parsl.yaml`](parsl.yaml) (current values; switch to `qos: regular` for production runs longer than 30 min):
+Key parameters in [`parsl.yaml`](parsl.yaml) (current values; `parsl_coadd.yaml` and `parsl_sim.yaml` use `qos: regular` for production runs longer than 30 min):
 
 | Parameter | Notes |
 |---|---|
-| `class: bps_parsl_sites.SlurmWorkQueue` | Defaults `exclusive=False` so `qos: shared` works without sbatch conflicts |
-| `cores_per_node: 8` | Parsl auto-injects `#SBATCH --cpus-per-task=8` so the single `srun` task covers all 8 cpus |
-| `mem_per_node: 16` | Parsl auto-injects `#SBATCH --mem=16g` (whole-block RAM) |
-| `qos` | `debug` for 30-min smoke tests (whole-node, fastest priority); `shared` for cost-efficient production (per-core billing) |
+| `class: bps_parsl_sites.SlurmWorkQueue` | Defaults `exclusive=False` so `qos: shared` works without sbatch conflicts; set `exclusive: true` for whole-node `qos: debug`/`regular` |
+| `cores_per_node: 256` | Whole 256-core node (SMT-counted); Parsl auto-injects `#SBATCH --cpus-per-task=256` |
+| `qos` | `debug` for 30-min smoke tests (whole-node, fastest priority); `regular` for production; `shared` for per-core billing |
 | `provider_options.max_blocks` | Independent sbatch submissions; bump to scale across nodes |
-| `worker_options: "--cores=8"` | work_queue worker accepts up to 8 quanta concurrently |
+| `worker_options: "--cores=256"` | work_queue worker accepts up to 256 quanta concurrently |
+| `extraQgraphOptions: "--rebase"` | Reset output-chain input order check; needed when re-running with new `-i` against an existing output chain |
 
-Note: `slurm_options:`, top-level `max_blocks:`, and `max_workers:` are **not recognized** by `bps_parsl_sites.SlurmWorkQueue` — use `scheduler_options:` (or the typed keys `cores_per_node`, `mem_per_node`) and the nested `provider_options:` block instead.
+Note: `slurm_options:`, top-level `max_blocks:`, and `max_workers:` are **not recognized** by `bps_parsl_sites.SlurmWorkQueue` — use `scheduler_options:` (or the typed keys `cores_per_node`, `mem_per_node`) and the nested `provider_options:` block instead. The `pipetask.cmdlineArgs` list is routed to `pipetask run` only; use `extraQgraphOptions:` to pass flags (e.g. `--rebase`) to `pipetask qgraph`.
 
 Quanta are farmed out across all blocks dynamically by the work_queue
 master, so each new sbatch that lands picks up work immediately. To
@@ -200,9 +200,11 @@ pipetask run \
   r, i, z; path set by the `photoZ.model_path` config field in
   [`measure_pipeline.yaml`](measure_pipeline.yaml))
 - **Truth catalogs for sim pipeline** (`measure_pipeline_sim.yaml` only): galaxy
-  + star FITS files under `$CATSIM_DIR` (e.g. `OneDegSq.fits`, `flagship_*.fits`,
-  `stars_*.fits`). `setup_lsst_v30.bash` exports `CATSIM_DIR=/global/u2/x/xiangchl/superonion/code/catsim`
-  for this; without it the workers fall back to `cwd` and fail to find the files.
+  + star FITS files under `$CATSIM_DIR`, one set per `galaxy_type`:
+  `OneDegSq.fits` (catsim2017), `flagship_cosmos.fits` (flagship2025),
+  diffsky lightcone files (diffsky), plus `stars_*.fits`. `setup_lsst_v30.bash`
+  exports `CATSIM_DIR=/global/u2/x/xiangchl/superonion/code/catsim`; without it
+  the workers fall back to `cwd` and fail to find the files.
 
 ## Output Catalogs
 
@@ -243,10 +245,12 @@ Open the notebooks in JupyterLab using the **"LSST v30.0.4.rc1"** kernel.
   `NGCorrelation` to produce the tangential / cross shear profile.
 - [`compare_a360_real_vs_sim.ipynb`](compare_a360_real_vs_sim.ipynb):
   loads per-patch `deep_coadd_anacal_catalog` (from
-  `u/$USER/dp1/a360_anacal_coadd/<run>`) and `deep_coadd_cell_80_0_anacal_catalog`
-  (from `u/$USER/dp1/a360_anacal_sim_80_0`), deduplicates with `is_primary`,
-  applies the same selection cuts, and produces per-band magnitude
-  histograms + colour-mag corner plots + an i-band size corner plot.
+  `u/$USER/dp1/a360_anacal_coadd`) plus the three sim catalogs
+  `deep_{dc1,flagship,diffsky}_coadd_cell_80_0_anacal_catalog` (from
+  `u/$USER/dp1/a360_anacal_sim_coadd_80_0`), deduplicates with `is_primary`,
+  applies the same selection cuts, and produces 4-series 1D mag + flux-err
+  histograms, colour-mag and size corner plots with legend, and one
+  RA/Dec scatter per sample.
 
 ## Cleaning Up
 

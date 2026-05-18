@@ -18,7 +18,7 @@ site:
         # NERSC debug qos: whole-node exclusive, 30-min cap, max 5 submitted.
         class: bps_parsl_sites.SlurmWorkQueue
         nodes_per_block: 1
-        cores_per_node: 64
+        cores_per_node: 256
         qos: regular
         constraint: cpu
         exclusive: true
@@ -28,7 +28,7 @@ site:
           init_blocks: 1
           min_blocks: 0
           max_blocks: 1
-        worker_options: "--cores=64"
+        worker_options: "--cores=256"
         monitorEnable: true
         monitorFilename: runinfo/monitoring.db
 

@@ -1,15 +1,79 @@
 description: |
-  Image simulation + AnaCal measurement driven by the registered cell-coadd
-  systematics (PSF + noise-correlation arrays) and combined-band mask.
+  Image simulation + AnaCal measurement driven by the registered deep-coadd
+  systematics (PSF + noise-correlation arrays) and combined-band mask, as
+  produced by xlens.processor.build_systematics.BuildSystematicsTask.
 
 instrument: lsst.obs.lsst.LsstComCam
 
 tasks:
-  catalogShear:
+  # catalogShear:
+  #   class: xlens.simulator.catalog.CatalogShearTask
+  #   config:
+  #     connections.catName: dc1_80_0
+  #     galaxy_type: catsim2017
+  #     layout: random
+  #     extend_ratio: 1.08
+  #     sep_arcsec: 14
+  #     z_bounds: [0.0, 0.63, 0.98, 1.48, 10.0]
+  #     mode: 80
+  #     rotId: 0
+  #     test_target: g1
+  #     test_value: 0.02
+  #     kappa_value: 0.0
+
+  # measureSimCoadds:
+  #   class: xlens.processor.measure_coadds.MeasureCoaddsPipe
+  #   config:
+  #     connections.inputName: deep_coadd
+  #     connections.outName: deep_dc1_coadd_cell_80_0
+  #     connections.catName: dc1_80_0
+  #     use_sim: true
+  #     sim_bands: ["g", "r", "i", "z"]
+  #     simulator.survey_name: lsst
+  #     simulator.mag_zero: 31.4
+  #     simulator.use_real_psf: true
+  #     simulator.draw_image_noise: true
+  #     fpfs.sigma_shapelets1: 0.54
+  #     anacal.do_noise_bias_correction: true
+  #     fpfs.do_noise_bias_correction: true
+
+  # catalogShear2:
+  #   class: xlens.simulator.catalog.CatalogShearTask
+  #   config:
+  #     connections.catName: flagship_80_0
+  #     galaxy_type: flagship2025
+  #     layout: random
+  #     extend_ratio: 1.08
+  #     sep_arcsec: 14
+  #     z_bounds: [0.0, 0.63, 0.98, 1.48, 10.0]
+  #     mode: 80
+  #     rotId: 0
+  #     test_target: g1
+  #     test_value: 0.02
+  #     kappa_value: 0.0
+
+  # measureSimCoadds2:
+  #   class: xlens.processor.measure_coadds.MeasureCoaddsPipe
+  #   config:
+  #     connections.inputName: deep_coadd
+  #     connections.outName: deep_flagship_coadd_cell_80_0
+  #     connections.catName: flagship_80_0
+  #     use_sim: true
+  #     sim_bands: ["g", "r", "i", "z"]
+  #     simulator.galaxy_type: flagship2025
+  #     simulator.survey_name: lsst
+  #     simulator.mag_zero: 31.4
+  #     simulator.use_real_psf: true
+  #     simulator.draw_image_noise: true
+  #     fpfs.sigma_shapelets1: 0.54
+  #     anacal.do_noise_bias_correction: true
+  #     fpfs.do_noise_bias_correction: true
+
+  catalogShear3:
     class: xlens.simulator.catalog.CatalogShearTask
     config:
-      connections.catName: dc1_80_0
-      galaxy_type: catsim2017
+      connections.catName: diffsky_80_0
+      galaxy_type: diffsky
       layout: random
       extend_ratio: 1.08
       sep_arcsec: 14
@@ -19,15 +83,18 @@ tasks:
       test_target: g1
       test_value: 0.02
       kappa_value: 0.0
+      select_observable: ["lsst_i_disk", "lsst_i_bulge"]
+      select_lower_limit: [16.0, 16.0]
 
-  measureSimCoadds:
+  measureSimCoadds3:
     class: xlens.processor.measure_coadds.MeasureCoaddsPipe
     config:
-      connections.inputName: deep_coadd_cell
-      connections.outName: deep_coadd_cell_80_0
-      connections.catName: dc1_80_0
+      connections.inputName: deep_coadd
+      connections.outName: deep_diffsky_coadd_cell_80_0
+      connections.catName: diffsky_80_0
       use_sim: true
       sim_bands: ["g", "r", "i", "z"]
+      simulator.galaxy_type: diffsky
       simulator.survey_name: lsst
       simulator.mag_zero: 31.4
       simulator.use_real_psf: true
@@ -36,27 +103,27 @@ tasks:
       anacal.do_noise_bias_correction: true
       fpfs.do_noise_bias_correction: true
 
-  photoZ:
-    class: xlens.processor.photoz.photoZPipe
-    config:
-      connections.inputName: deep_coadd_cell_80_0
-      model_path: /global/u2/x/xiangchl/superonion/code/model_4bands_fzboost.pkl
-      mag_zero: 31.4
-      flux_name: fpfs1
-      bands: griz
-      ref_band: i
-      do_distortions: true
-      output_pdfs: false
+  # photoZ:
+  #   class: xlens.processor.photoz.photoZPipe
+  #   config:
+  #     connections.inputName: deep_coadd_cell_80_0
+  #     model_path: /global/u2/x/xiangchl/superonion/code/model_4bands_fzboost.pkl
+  #     mag_zero: 31.4
+  #     flux_name: fpfs1
+  #     bands: griz
+  #     ref_band: i
+  #     do_distortions: true
+  #     output_pdfs: false
 
-  mergePatches:
-    class: xlens.processor.merge.MergePipe
-    config:
-      connections.inputName: deep_coadd_cell_80_0
-      bands: ["g", "r", "i", "z"]
-      band_weights:
-        - 0.5287963721184084
-        - 0.33049707056512084
-        - 0.1362332926465851
-        - 0.004473264669885652
-      mag_zero: 31.4
-      fpfs_c0: 8.4
+  # mergePatches:
+  #   class: xlens.processor.merge.MergePipe
+  #   config:
+  #     connections.inputName: deep_coadd_cell_80_0
+  #     bands: ["g", "r", "i", "z"]
+  #     band_weights:
+  #       - 0.5287963721184084
+  #       - 0.33049707056512084
+  #       - 0.1362332926465851
+  #       - 0.004473264669885652
+  #     mag_zero: 31.4
+  #     fpfs_c0: 8.4
