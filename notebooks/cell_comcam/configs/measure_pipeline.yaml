@@ -1,0 +1,43 @@
+description: |
+  Cell-based coadd systematics, FPFS measurement, photo-z, and
+  tract-level merge.
+
+instrument: lsst.obs.lsst.LsstComCam
+
+tasks:
+  buildCellSystematics:
+    class: xlens.processor.build_cell_systematics.BuildCellSystematicsTask
+
+  measureCellCoadds:
+    class: xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe
+    config:
+      connections.inputName: deep_coadd_cell
+      anacal.do_noise_bias_correction: True
+      fpfs.do_noise_bias_correction: True
+      fpfs.sigma_shapelets1: 0.54
+      do_measure_flux_gauss: True
+
+  photoZ:
+    class: xlens.processor.photoz.photoZPipe
+    config:
+      connections.inputName: deep_coadd_cell
+      model_path: /global/u2/x/xiangchl/superonion/code/model_4bands_fzboost.pkl
+      mag_zero: 31.4
+      flux_name: gauss2
+      bands: griz
+      ref_band: i
+      do_distortions: true
+      output_pdfs: true
+
+  mergePatches:
+    class: xlens.processor.merge.MergePipe
+    config:
+      connections.inputName: deep_coadd_cell
+      bands: ["g", "r", "i", "z"]
+      band_weights:
+        - 0.5287963721184084
+        - 0.33049707056512084
+        - 0.1362332926465851
+        - 0.004473264669885652
+      mag_zero: 31.4
+      fpfs_c0: 8.4
