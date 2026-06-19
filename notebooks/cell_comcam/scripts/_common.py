@@ -23,7 +23,7 @@ DEFAULT_SKYMAP = "lsst_cells_v1"
 
 # Output convention: <FIELDS_ROOT>/<field>/<subdir>/<name>.
 FIELDS_ROOT = Path(
-    "/global/u2/x/xiangchl/superonion/code/AnaCal_DESCNote/notebooks/cell_comcam"
+    "/global/u2/x/xiangchl/superonion/code/AnaCal_DESCNote/notebooks/cell_comcam/results"
 )
 
 

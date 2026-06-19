@@ -56,6 +56,12 @@ def parse_args():
     add_common_args(p)
     p.add_argument("--nfw-c", type=float, default=4.0,
                    help="fixed NFW concentration (default: 4)")
+    p.add_argument("--bins-mpc", default=None,
+                   help="radial bin edges in Mpc. Pass either "
+                        "'rmin,rmax,nbins' for log-spaced edges (e.g. "
+                        "'0.2,9,7' = alternate recipe) or an explicit "
+                        "comma-separated list of edges. Default: the "
+                        "built-in 7-bin DEFAULT_BINS_MPC array.")
     p.add_argument("--nfw-mass", type=float, default=DEFAULT_NFW_MASS,
                    help=f"NFW M500c for the tangential-plot overlay "
                         f"(default: {DEFAULT_NFW_MASS:.0e})")
@@ -257,7 +263,17 @@ def main():
     print(f"# beta_s={beta_s:.4f}  beta_s_sqr={beta_s_sqr:.4f}", file=sys.stderr)
 
     # ---- Plot 2 — mass posterior ----
-    bins_mpc = DEFAULT_BINS_MPC
+    if args.bins_mpc is None:
+        bins_mpc = DEFAULT_BINS_MPC
+    else:
+        parts = [float(s) for s in args.bins_mpc.split(",")]
+        if len(parts) == 3:
+            # 'rmin,rmax,nbins' shorthand -> log-spaced edges.
+            rmin, rmax, nbins = parts[0], parts[1], int(parts[2])
+            bins_mpc = np.logspace(np.log10(rmin), np.log10(rmax), nbins + 1)
+        else:
+            bins_mpc = np.asarray(parts)
+    print(f"# bins_mpc = {bins_mpc.round(3).tolist()}", file=sys.stderr)
     bin_mids = 0.5 * (bins_mpc[1:] + bins_mpc[:-1])
     global_R = float(np.mean(res))
     print(f"# global R = {global_R:.4f}", file=sys.stderr)

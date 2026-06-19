@@ -51,8 +51,11 @@ def parse_args():
                    help="Schirmer filter `a` (default: 15)")
     p.add_argument("--filter-b", type=float, default=150.0,
                    help="Schirmer filter `b` (default: 150)")
-    p.add_argument("--vmin", type=float, default=-2.0, help="map imshow vmin (default: -2)")
-    p.add_argument("--vmax", type=float, default=5.0,  help="map imshow vmax (default: 5)")
+    p.add_argument("--vmin", type=float, default=None,
+                   help="map imshow vmin (default: auto = -vmax_auto)")
+    p.add_argument("--vmax", type=float, default=None,
+                   help="map imshow vmax (default: auto = ceil(2 * max|S/N|) "
+                        "/ 2, rounded up to the nearest 0.5, min 1.0)")
     p.add_argument("--hist-xlim", default="-5,8",
                    help="histogram x (S/N) limits, comma-separated (default: -5,8)")
     p.add_argument("--map-out", default=None,
@@ -176,26 +179,35 @@ def main():
         },
     )
 
-    # Plot 4 — S/N map (normalised by the spatial-mean variance, matching
-    # the BNL notebook convention).
-    sn_v = np.sqrt(np.mean(v_ap))
-    sn_e_map = e_ap / sn_v
-    sn_b_map = b_ap / sn_v
+    # Plot 4 — S/N map (normalised per-pixel by the local variance).
+    sn_e_map = e_ap / np.sqrt(v_ap)
+    sn_b_map = b_ap / np.sqrt(v_ap)
     peak_idx = np.unravel_index(int(np.argmax(sn_e_map)), sn_e_map.shape)
     peak_val = float(sn_e_map[peak_idx])
     print(f"# E-mode peak S/N = {peak_val:.2f} at grid {peak_idx}", file=sys.stderr)
     extent = (rr, -rr, -rr, rr)
+    # Auto colorbar range: symmetric around 0, rounded up to nearest 0.5
+    # (min 1.0) so the diverging RdBu_r mid-tone always sits at S/N=0.
+    if args.vmax is None:
+        max_abs = float(max(np.max(np.abs(sn_e_map)),
+                            np.max(np.abs(sn_b_map))))
+        vmax_used = max(1.0, np.ceil(2 * max_abs) / 2)
+    else:
+        vmax_used = args.vmax
+    vmin_used = args.vmin if args.vmin is not None else -vmax_used
+    print(f"# imshow scale: vmin={vmin_used:.2f}, vmax={vmax_used:.2f}",
+          file=sys.stderr)
     make_map_plot(
         sn_e=sn_e_map, sn_b=sn_b_map,
         peak_idx=peak_idx, peak_val=peak_val,
-        extent=extent, N=N, vmin=args.vmin, vmax=args.vmax,
+        extent=extent, N=N, vmin=vmin_used, vmax=vmax_used,
         out_path=out_map,
     )
 
     # Plot 5 — per-pixel S/N histogram, normalised by per-pixel variance
     # (so the B mode should sit on N(0, 1)).
-    sn_e_pix = (e_ap / np.sqrt(v_ap)).flatten()
-    sn_b_pix = (b_ap / np.sqrt(v_ap)).flatten()
+    sn_e_pix = sn_e_map.flatten()
+    sn_b_pix = sn_b_map.flatten()
     xlim = tuple(float(s) for s in args.hist_xlim.split(","))
     make_hist_plot(sn_e_flat=sn_e_pix, sn_b_flat=sn_b_pix,
                    xlim=xlim, out_path=out_hist)

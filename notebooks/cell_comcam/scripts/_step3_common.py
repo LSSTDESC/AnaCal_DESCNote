@@ -74,17 +74,29 @@ def add_common_args(p: argparse.ArgumentParser):
                    help="flux-column suffix for mag computation (default: fpfs1)")
     p.add_argument("--trace-min", type=float, default=0.05,
                    help="size cut (m2/m0 > trace_min) (default: 0.05)")
-    p.add_argument("--emax", type=float, default=0.3,
-                   help="shape cut |e|^2 < emax^2 (default: 0.3)")
+    p.add_argument("--emax", type=float, default=0.5,
+                   help="shape cut |e|^2 < emax^2 (default: 0.5)")
+    p.add_argument("--z-col", default=_DEFAULT_Z_COL,
+                   help=f"source-z column "
+                        f"(default: {_DEFAULT_Z_COL!r}; alt: zmode_0)")
+    p.add_argument("--mag-max-per-band", default=None,
+                   help="per-band mag upper bound, e.g. "
+                        "'u=27.5,g=27.5,r=24.5,i=27.5,z=27.5,y=27.5' "
+                        "(6-band edfs recipe). Default: built-in griz dict "
+                        "{g:25.5, r:25.0, i:23.5, z:24.5}.")
     p.add_argument("--z-min", type=float, default=0.40,
-                   help="photo-z lower bound on zbest_0 (default: 0.40)")
+                   help="lower bound on --z-col (default: 0.40)")
     p.add_argument("--z-max", type=float, default=2.0,
-                   help="photo-z upper bound on zbest_0 (default: 2.0)")
+                   help="upper bound on --z-col (default: 2.0)")
     p.add_argument("--iband-size-min", type=float, default=None,
-                   help="legacy BNL-notebook size cut: drop sources with "
+                   help="legacy size cut: drop sources with "
                         "(i_fpfs1_m20 + i_fpfs1_m00) / i_fpfs1_m00 <= this. "
                         "Pass 0.1 to reproduce the old default_selection. "
                         "Off by default (use --emax / --trace-min instead).")
+    p.add_argument("--band-weights", default=None,
+                   help="per-band weights for the FPFS shape combine, "
+                        "e.g. 'g=0.53,r=0.33,i=0.14,z=0.005'. Default: "
+                        "use xlens.utils.nxg._DEFAULT_FPFS_WEIGHTS.")
     return p
 
 
@@ -181,7 +193,7 @@ def load_patch_pairs(butler, tract_ids, skymap_name, anacal_ds, photoz_ds,
 
 _DEFAULT_MAG_MAX = {"g": 25.5, "r": 25.0, "i": 23.5, "z": 24.5}
 _DEFAULT_Z_RANGE = (0.40, 2.0)
-_DEFAULT_Z_COL = "zbest_0"
+_DEFAULT_Z_COL = "zmode_0"
 _DEFAULT_WSEL_MIN = 1e-5
 
 
@@ -191,7 +203,7 @@ def select_sources(
     flux_name="fpfs1",
     mag_zero=31.4,
     mag_max=None,
-    emax=0.3,
+    emax=0.5,
     trace_min=0.05,
     wsel_min=_DEFAULT_WSEL_MIN,
     z_range=_DEFAULT_Z_RANGE,
@@ -222,7 +234,7 @@ def select_sources(
     mag_zero : float
         AB-mag zero point of the fluxes (default 31.4 — DP1).
     mag_max : float | dict | None
-        Per-band upper magnitude cut. ``None`` -> the BNL-notebook
+        Per-band upper magnitude cut. ``None`` -> the built-in
         defaults ``{g: 25.5, r: 25.0, i: 23.5, z: 24.5}``. A scalar is
         broadcast across the bands.
     emax, trace_min : float
@@ -255,9 +267,15 @@ def select_sources(
         z = np.asarray(table[z_col], dtype=np.float64)
         z_lo, z_hi = z_range
         msk &= (z > z_lo) & (z < z_hi)
+    # Derive `bands` string from the mag_max keys so a 6-band dict
+    # (e.g. u,g,r,i,z,y) drives a 6-band mag cut.
+    if isinstance(mag_max, dict):
+        bands = "".join(sorted(mag_max.keys()))
+    else:
+        bands = "griz"
     mag_size_msk, _ = build_selection_mask(
         table, comp=1, dg=dg,
-        bands="griz", mag_max=mag_max, mag_zero=mag_zero,
+        bands=bands, mag_max=mag_max, mag_zero=mag_zero,
         flux_name=flux_name, shape_name="fpfs",
         emax=emax, trace_min=trace_min,
     )
@@ -322,11 +340,19 @@ def load_context(args, load_pdfs=False):
     cat["index"] = np.arange(len(cat))
     cat_all = cat
 
+    mag_max = None
+    if args.mag_max_per_band is not None:
+        mag_max = {
+            kv.split("=")[0].strip(): float(kv.split("=")[1])
+            for kv in args.mag_max_per_band.split(",")
+        }
     msk = select_sources(
         cat,
         flux_name=args.flux_name, mag_zero=args.mag_zero,
+        mag_max=mag_max,
         trace_min=args.trace_min, emax=args.emax,
         z_range=(args.z_min, args.z_max),
+        z_col=args.z_col,
     )
     if args.iband_size_min is not None:
         s_iband = (cat["i_fpfs1_m20"] + cat["i_fpfs1_m00"]) / cat["i_fpfs1_m00"]
@@ -337,7 +363,15 @@ def load_context(args, load_pdfs=False):
     cat = cat[msk]
     print(f"# rows after selection: {len(cat):,}", file=sys.stderr)
 
-    e1, e2, res = calibrate_shapes(cat)
+    weights = None
+    if args.band_weights is not None:
+        weights = {
+            kv.split("=")[0].strip(): float(kv.split("=")[1])
+            for kv in args.band_weights.split(",")
+        }
+        print(f"# overriding calibrate_shapes weights: {weights}",
+              file=sys.stderr)
+    e1, e2, res = calibrate_shapes(cat, weights=weights)
     cat["response"] = res
     pdfs_sel = pdfs_all[msk] if pdfs_all is not None else None
     return {
