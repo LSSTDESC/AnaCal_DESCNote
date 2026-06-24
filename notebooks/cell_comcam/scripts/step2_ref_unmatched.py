@@ -40,7 +40,7 @@ from _common import (
 )
 
 
-DEFAULT_DATASET = "deep_coadd_cell_anacal_catalog"
+DEFAULT_DATASET = "deep_coadd_cell_anacal_merged"
 DEFAULT_OUT_NAME = "ref_unmatched.png"
 STEP2_SUBDIR = "step2"
 
@@ -62,8 +62,10 @@ def parse_args():
     p.add_argument("--repo", default=DEFAULT_REPO, help="butler repo")
     p.add_argument("--skymap", default=DEFAULT_SKYMAP, help="skymap name")
     p.add_argument("--dataset", default=DEFAULT_DATASET,
-                   help="per-patch catalog dataset type "
-                        "(has gauss2 + is_primary; deduped across patches)")
+                   help="per-tract merged anacal catalog dataset type "
+                        "(already filtered by is_primary + wsel; "
+                        "carries gauss2 fluxes after the recent merge "
+                        "task update)")
     p.add_argument("--our-imag-max", type=float, default=float("inf"),
                    help="optional i-mag cut applied to the pipeline "
                         "catalog (via i_flux_gauss2; default: no cut)")
@@ -84,9 +86,13 @@ def parse_args():
     return p.parse_args()
 
 
-def load_per_patch_primary(butler, dataset_type, tract_ids, skymap_name):
-    """Vstack per-patch tables, keeping only ``is_primary`` rows (dedupes
-    overlap-region duplicates)."""
+def load_merged_catalog(butler, dataset_type, tract_ids, skymap_name):
+    """Vstack the per-tract merged anacal catalogs.
+
+    The merge task already applies the ``is_primary`` and ``wsel``
+    filters in ``MergePipe._finalize_columns``, so no extra
+    deduplication is needed here.
+    """
     tables = []
     for tid in tract_ids:
         refs = list(butler.registry.queryDatasets(
@@ -98,15 +104,9 @@ def load_per_patch_primary(butler, dataset_type, tract_ids, skymap_name):
             print(f"#   tract={tid}: no {dataset_type} refs — skipped",
                   file=sys.stderr)
             continue
-        kept = 0
-        for r in refs:
-            t = Table(butler.get(r))
-            if "is_primary" in t.colnames:
-                t = t[np.asarray(t["is_primary"], dtype=bool)]
-            tables.append(t)
-            kept += len(t)
-        print(f"#   tract={tid}: {len(refs)} patches, {kept:,} primary rows",
-              file=sys.stderr)
+        t = Table(butler.get(refs[0]))
+        tables.append(t)
+        print(f"#   tract={tid}: {len(t):,} rows", file=sys.stderr)
     if not tables:
         raise RuntimeError(f"no {dataset_type} in any candidate tract")
     return vstack(tables, metadata_conflicts="silent")
@@ -154,7 +154,7 @@ def main():
     butler = open_butler(args.collection, repo=args.repo)
     skymap = butler.get("skyMap", skymap=args.skymap)
     tract_ids = find_tracts(skymap, args.ra, args.dec, args.radius, args.grid_step)
-    anacal = load_per_patch_primary(butler, args.dataset, tract_ids, args.skymap)
+    anacal = load_merged_catalog(butler, args.dataset, tract_ids, args.skymap)
 
     our_ra_all = np.asarray(anacal["ra"], dtype=np.float64)
     our_dec_all = np.asarray(anacal["dec"], dtype=np.float64)

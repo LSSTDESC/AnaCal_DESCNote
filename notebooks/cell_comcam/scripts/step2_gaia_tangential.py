@@ -66,10 +66,10 @@ from _common import (  # noqa: E402
     find_tracts, open_butler, resolve_field_out,
 )
 from _step3_common import (  # noqa: E402
-    DEFAULT_ANACAL_DS, DEFAULT_PHOTOZ_DS,
-    add_band_mags, load_patch_pairs, select_sources,
+    DEFAULT_MERGED_DS,
+    _compute_response_from_merged,
+    add_band_mags, load_merged, select_sources,
 )
-from xlens.utils.nxg import calibrate_shapes  # noqa: E402
 
 DEFAULT_GAIA_DS = "deep_coadd_cell_systematics_gaia"
 STEP2_SUBDIR = "step2"
@@ -100,10 +100,8 @@ def parse_args():
                    help="binned-data npz path (overrides --field)")
     p.add_argument("--repo", default=DEFAULT_REPO, help="butler repo")
     p.add_argument("--skymap", default=DEFAULT_SKYMAP, help="skymap name")
-    p.add_argument("--anacal-dataset", default=DEFAULT_ANACAL_DS,
-                   help="per-patch anacal dataset type")
-    p.add_argument("--photoz-dataset", default=DEFAULT_PHOTOZ_DS,
-                   help="per-patch photo-z dataset type")
+    p.add_argument("--merged-dataset", default=DEFAULT_MERGED_DS,
+                   help="per-tract merged anacal dataset type")
     p.add_argument("--gaia-dataset", default=DEFAULT_GAIA_DS,
                    help="per-patch GAIA dataset type "
                         "(written by BuildCellSystematicsTask)")
@@ -171,11 +169,10 @@ def main():
                             args.grid_step)
     print(f"# overlapping tracts: {tract_ids}", file=sys.stderr)
 
-    # --- sources: same loader + selection step3 uses ---
-    cat, _ = load_patch_pairs(
-        butler, tract_ids, args.skymap,
-        args.anacal_dataset, args.photoz_dataset, pdf_ds=None,
-    )
+    # --- sources: per-tract merged anacal catalog (band-combined +
+    # photo-z already joined inside MergePipe).
+    cat = load_merged(butler, tract_ids, args.skymap,
+                      merged_ds=args.merged_dataset)
     add_band_mags(cat, mag_zero=args.mag_zero, flux_name=args.flux_name)
     print(f"# rows before selection: {len(cat):,}", file=sys.stderr)
     msk = select_sources(
@@ -185,15 +182,21 @@ def main():
         z_range=(args.z_min, args.z_max),
     )
     if args.iband_size_min is not None:
-        m00 = cat["i_fpfs1_m00"]
-        s_iband = (cat["i_fpfs1_m20"] + m00) / m00
-        msk &= np.asarray(s_iband) > args.iband_size_min
-        print(f"# legacy --iband-size-min={args.iband_size_min}: "
-              f"{int(msk.sum()):,} rows kept", file=sys.stderr)
+        # legacy size cut needs per-band i-band moments which were
+        # dropped by the merge — skip with a warning rather than erroring.
+        if "i_fpfs1_m00" in cat.colnames:
+            m00 = cat["i_fpfs1_m00"]
+            s_iband = (cat["i_fpfs1_m20"] + m00) / m00
+            msk &= np.asarray(s_iband) > args.iband_size_min
+            print(f"# legacy --iband-size-min={args.iband_size_min}: "
+                  f"{int(msk.sum()):,} rows kept", file=sys.stderr)
+        else:
+            print("# WARN: --iband-size-min ignored (merged catalog "
+                  "doesn't carry per-band i_fpfs1_m00)", file=sys.stderr)
     cat = cat[msk]
     print(f"# rows after selection: {len(cat):,}", file=sys.stderr)
 
-    e1, e2, res = calibrate_shapes(cat)
+    e1, e2, res = _compute_response_from_merged(cat)
     e1 = np.asarray(e1, dtype=np.float64)
     e2 = np.asarray(e2, dtype=np.float64)
     res = np.asarray(res, dtype=np.float64)

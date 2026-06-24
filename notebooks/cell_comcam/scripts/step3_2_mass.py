@@ -250,7 +250,10 @@ def main():
         if p is not None:
             Path(p).parent.mkdir(parents=True, exist_ok=True)
 
-    ctx = load_context(args, load_pdfs=True)
+    # Use the per-tract merged anacal catalog (default).  PDFs are NOT
+    # loaded here — get_source_nz() reads the persisted source_nz.npz
+    # that step3_1 writes from per-patch PDFs.
+    ctx = load_context(args)
     table = ctx["table"]
     e1, e2, res = ctx["e1"], ctx["e2"], ctx["res"]
     ra_bcg, dec_bcg, z_cl = ctx["ra_bcg"], ctx["dec_bcg"], ctx["z_cl"]

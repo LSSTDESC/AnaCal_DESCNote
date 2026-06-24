@@ -17,6 +17,7 @@ tasks:
       fpfs.do_noise_bias_correction: True
       fpfs.sigma_shapelets1: 0.707
       do_measure_flux_gauss: True
+      doPsfHsmMoments: True
       bands: ["g", "r", "i", "z"]
 
   photoZ:
@@ -36,10 +37,29 @@ tasks:
     config:
       connections.inputName: deep_coadd_cell
       bands: ["g", "r", "i", "z"]
+      # Defaults of xlens.utils.nxg._DEFAULT_FPFS_WEIGHTS so the
+      # band-combined fpfs1_e1/e2 written here exactly equals what
+      # step3's calibrate_shapes would compute from per-patch.
       band_weights:
-        - 0.5287963721184084
-        - 0.33049707056512084
-        - 0.1362332926465851
-        - 0.004473264669885652
+        - 0.5287963721184084    # g
+        - 0.33049707056512084   # r
+        - 0.1362332926465851    # i
+        - 0.004473264669885652  # z
       mag_zero: 31.4
-      fpfs_c0: 8.4
+      # Pick fpfs_c0 so the effective c0 in
+      # ``c0_eff = fpfs_c0 * 10**((mag_zero - 30) / 2.5)``
+      # equals 50 — the hard-coded default in
+      # xlens.utils.nxg.calibrate_shapes.
+      # 50 / 10**((31.4-30)/2.5) = 50 / 10**0.56 = 13.771538667...
+      fpfs_c0: 13.771538667129038
+      # Step3 reads the merged catalog directly; turn off the local
+      # WCS rotation so merged fpfs1_e1/e2 stay in the same frame
+      # calibrate_shapes produced from per-patch.
+      do_wcs_correction: false
+      # flipu_wcs=true was tried and broke the cluster tangential
+      # signal in step3 (chi dropped 5.46 -> 1.11). The likely cause
+      # is a frame mismatch: flipu negates e2 (image -> sky), but
+      # xlens.utils.nxg.anacal_get_tang_cross still computes the
+      # position angle in the image frame. Keep this False until the
+      # tangential rotation is updated to the sky convention.
+      flipu_wcs: false

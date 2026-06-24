@@ -39,6 +39,7 @@ from _common import (
 DEFAULT_ANACAL_DS = "deep_coadd_cell_anacal_catalog"
 DEFAULT_PHOTOZ_DS = "deep_coadd_cell_anacal_fzb_point"
 DEFAULT_PDF_DS = "deep_coadd_cell_anacal_fzb_pdfs"
+DEFAULT_MERGED_DS = "deep_coadd_cell_anacal_merged"
 # Z grid matches xlens.catalog.redshift.Z_GRIDS (np.linspace(0, 5, 501)).
 Z_GRID = np.linspace(0.0, 5.0, 501)
 STEP3_SUBDIR = "step3"
@@ -309,18 +310,77 @@ def add_band_mags(table, mag_zero=31.4, flux_name="fpfs1"):
     return table
 
 
-def load_context(args, load_pdfs=False):
-    """Load anacal + photoz (+ optional PDFs), join, select, calibrate.
+def load_merged(butler, tract_ids, skymap_name,
+                merged_ds=DEFAULT_MERGED_DS):
+    """Load the per-tract merged anacal catalog(s) and vstack them.
+
+    The merged catalog is already filtered by ``is_primary`` and
+    ``wsel > 1e-5`` inside ``MergePipe._finalize_columns``, and carries
+    the band-combined ``fpfs1_e1/e2`` (+ shear responses), the
+    detection-band raw ``fpfs_*`` (for the shape/size selection cuts),
+    per-band ``{b}_flux_fpfs1`` + ``gauss2`` fluxes, photo-z point
+    estimates and the PSF HSM moments. PDFs are *not* in merged.
+    """
+    pieces = []
+    for tid in tract_ids:
+        refs = list(butler.registry.queryDatasets(
+            merged_ds, where="skymap=:s AND tract=:t",
+            bind={"s": skymap_name, "t": tid},
+        ))
+        if not refs:
+            print(f"#   tract={tid}: no {merged_ds} — skipped", file=sys.stderr)
+            continue
+        # one ref per (skymap, tract); pick first if more.
+        t = Table(butler.get(refs[0]))
+        pieces.append(t)
+        print(f"#   tract={tid}: {len(t):,} rows", file=sys.stderr)
+    if not pieces:
+        raise RuntimeError(f"no {merged_ds} in any candidate tract")
+    return vstack(pieces, metadata_conflicts="silent")
+
+
+def _compute_response_from_merged(cat, c0=50.0):
+    """Reproduce ``xlens.utils.nxg.calibrate_shapes``'s response from
+    the columns the merged catalog carries — works without per-band
+    moments because the merge has already done the band combination.
+
+    Returns ``e1, e2, res`` matching what ``calibrate_shapes`` produces.
+    Note: the merged ``fpfs1_e1/e2`` are stored as ``m22c/(m00+c0)`` /
+    ``m22s/(m00+c0)`` (already including any WCS correction the merge
+    applied). For consistency with ``calibrate_shapes`` we use the same
+    formula here.
+    """
+    e1 = np.asarray(cat["fpfs1_e1"], dtype=np.float64) * np.asarray(cat["wsel"])
+    e2 = np.asarray(cat["fpfs1_e2"], dtype=np.float64) * np.asarray(cat["wsel"])
+    wsel = np.asarray(cat["wsel"], dtype=np.float64)
+    dwsel_dg1 = np.asarray(cat["dwsel_dg1"], dtype=np.float64)
+    dwsel_dg2 = np.asarray(cat["dwsel_dg2"], dtype=np.float64)
+    de1_dg1 = np.asarray(cat["fpfs1_de1_dg1"], dtype=np.float64)
+    de2_dg2 = np.asarray(cat["fpfs1_de2_dg2"], dtype=np.float64)
+    e1_raw = np.asarray(cat["fpfs1_e1"], dtype=np.float64)
+    e2_raw = np.asarray(cat["fpfs1_e2"], dtype=np.float64)
+    res = (
+        de1_dg1 * wsel + dwsel_dg1 * e1_raw
+        + de2_dg2 * wsel + dwsel_dg2 * e2_raw
+    ) / 2.0
+    return e1, e2, res
+
+
+def load_context(args, load_pdfs=False, use_merged=True):
+    """Load merged anacal catalog (or per-patch + photoz when
+    ``use_merged=False``), select sources, and return shear-ready ctx.
 
     Parameters
     ----------
     load_pdfs : bool
-        If True, also load per-source FlexZBoost PDFs from
-        ``args.pdf_dataset`` (default ``deep_coadd_cell_anacal_fzb_pdfs``)
-        and return them via ``ctx['pdfs_all']`` (row-aligned with
-        ``ctx['table_all']``) and ``ctx['pdfs']`` (after the source cut,
-        row-aligned with ``ctx['table']``). ``None`` if not requested or
-        not present.
+        Forces ``use_merged=False`` — PDFs only live in the per-patch
+        ``args.pdf_dataset`` (default ``deep_coadd_cell_anacal_fzb_pdfs``).
+    use_merged : bool
+        Default True: read ``deep_coadd_cell_anacal_merged`` and skip
+        the in-script ``calibrate_shapes`` (the merge already did the
+        band combination + soft-bias regularisation + optional WCS
+        correction). Set False to fall back to the per-patch path
+        (needed for step3_1 which consumes PDFs).
     """
     butler = open_butler(args.collection, repo=args.repo)
     skymap = butler.get("skyMap", skymap=args.skymap)
@@ -328,12 +388,20 @@ def load_context(args, load_pdfs=False):
     tract_ids = find_tracts(skymap, args.ra, args.dec, args.radius, args.grid_step)
     print(f"# overlapping tracts: {tract_ids}", file=sys.stderr)
 
-    pdf_ds = getattr(args, "pdf_dataset", DEFAULT_PDF_DS) if load_pdfs else None
-    cat, pdfs_all = load_patch_pairs(
-        butler, tract_ids, args.skymap,
-        args.anacal_dataset, args.photoz_dataset,
-        pdf_ds=pdf_ds,
-    )
+    if load_pdfs:
+        use_merged = False
+
+    pdfs_all = None
+    if use_merged:
+        merged_ds = getattr(args, "merged_dataset", DEFAULT_MERGED_DS)
+        cat = load_merged(butler, tract_ids, args.skymap, merged_ds=merged_ds)
+    else:
+        pdf_ds = getattr(args, "pdf_dataset", DEFAULT_PDF_DS) if load_pdfs else None
+        cat, pdfs_all = load_patch_pairs(
+            butler, tract_ids, args.skymap,
+            args.anacal_dataset, args.photoz_dataset,
+            pdf_ds=pdf_ds,
+        )
     print(f"# rows before selection: {len(cat):,}", file=sys.stderr)
 
     add_band_mags(cat, mag_zero=args.mag_zero, flux_name=args.flux_name)
@@ -363,15 +431,23 @@ def load_context(args, load_pdfs=False):
     cat = cat[msk]
     print(f"# rows after selection: {len(cat):,}", file=sys.stderr)
 
-    weights = None
-    if args.band_weights is not None:
-        weights = {
-            kv.split("=")[0].strip(): float(kv.split("=")[1])
-            for kv in args.band_weights.split(",")
-        }
-        print(f"# overriding calibrate_shapes weights: {weights}",
-              file=sys.stderr)
-    e1, e2, res = calibrate_shapes(cat, weights=weights)
+    if use_merged:
+        # Merged catalog already carries the band-combined fpfs1_e1/e2
+        # (and responses). Reuse them directly — equivalent to running
+        # calibrate_shapes on per-patch when the merge yaml's
+        # band_weights + fpfs_c0 are aligned with calibrate_shapes
+        # defaults.
+        e1, e2, res = _compute_response_from_merged(cat)
+    else:
+        weights = None
+        if args.band_weights is not None:
+            weights = {
+                kv.split("=")[0].strip(): float(kv.split("=")[1])
+                for kv in args.band_weights.split(",")
+            }
+            print(f"# overriding calibrate_shapes weights: {weights}",
+                  file=sys.stderr)
+        e1, e2, res = calibrate_shapes(cat, weights=weights)
     cat["response"] = res
     pdfs_sel = pdfs_all[msk] if pdfs_all is not None else None
     return {

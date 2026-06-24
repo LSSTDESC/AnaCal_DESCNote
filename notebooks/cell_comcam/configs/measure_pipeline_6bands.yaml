@@ -49,6 +49,12 @@ tasks:
         - 'i'
         - 'z'
         - 'y'
+      # griz defaults from xlens.utils.nxg._DEFAULT_FPFS_WEIGHTS so
+      # the band-combined fpfs1_e1/e2 written here exactly equals
+      # what step3's calibrate_shapes would compute from per-patch.
+      # u and y are forced to 0 — shape information from those bands
+      # is poor on ComCam DP1 and should not enter the band-combined
+      # moments.
       band_weights:
         - 0.0                    # u (flux pass-through only)
         - 0.5287963721184084     # g
@@ -57,4 +63,20 @@ tasks:
         - 0.004473264669885652   # z
         - 0.0                    # y (flux pass-through only)
       mag_zero: 31.4
-      fpfs_c0: 8.4
+      # Pick fpfs_c0 so the effective c0 in
+      # ``c0_eff = fpfs_c0 * 10**((mag_zero - 30) / 2.5)``
+      # equals 50 — the hard-coded default in
+      # xlens.utils.nxg.calibrate_shapes.
+      # 50 / 10**((31.4-30)/2.5) = 50 / 10**0.56 = 13.771538667...
+      fpfs_c0: 13.771538667129038
+      # Step3 reads the merged catalog directly; turn off the local
+      # WCS rotation so merged fpfs1_e1/e2 stay in the same frame
+      # calibrate_shapes produced from per-patch.
+      do_wcs_correction: false
+      # flipu_wcs=true was tried and broke the cluster tangential
+      # signal in step3 (chi dropped 5.46 -> 1.11). The likely cause
+      # is a frame mismatch: flipu negates e2 (image -> sky), but
+      # xlens.utils.nxg.anacal_get_tang_cross still computes the
+      # position angle in the image frame. Keep this False until the
+      # tangential rotation is updated to the sky convention.
+      flipu_wcs: false
