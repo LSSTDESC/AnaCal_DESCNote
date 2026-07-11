@@ -268,6 +268,13 @@ def parse_args():
     p.add_argument("--hist-xlim", default="-5,8",
                    help="histogram x (S/N) limits, comma-separated "
                         "(default: -5,8 — same as step3_3)")
+    p.add_argument("--peak-edge-buffer-deg", type=float, default=None,
+                   help="when finding the |sn_e| peak, ignore pixels within "
+                        "this great-circle distance (deg) of the search-disc "
+                        "rim — they are biased by the Schirmer aperture "
+                        "kernel reaching outside the source footprint. "
+                        "Default = --aperture-size (so the peak search is "
+                        "restricted to the inner radius_deg - aperture_size).")
     return p.parse_args()
 
 
@@ -335,7 +342,39 @@ def main():
     # test, the imshow peak, and the histogram alike.
     sn_e = e_ap / np.sqrt(np.maximum(v_ap, 1e-30))
     sn_b = b_ap / np.sqrt(np.maximum(v_ap, 1e-30))
-    peak_arg = int(np.argmax(sn_e))
+
+    # Mask the outer rim before the peak search — the Schirmer kernel
+    # extends ~aperture_size; pixels within that distance of the
+    # search-disc edge see sources only on the inward side, biasing
+    # both Map_E and Map_V and producing spurious rim peaks.
+    edge_buf = (args.peak_edge_buffer_deg
+                if args.peak_edge_buffer_deg is not None
+                else args.aperture_size)
+    peak_max_radius_deg = max(0.0, radius_deg - edge_buf)
+    theta_pk, phi_pk = hp.pix2ang(
+        args.nside_sparse, ipix, nest=True,
+    )
+    pix_ra = np.degrees(phi_pk)
+    pix_dec = 90.0 - np.degrees(theta_pk)
+    cos_d = (np.sin(np.deg2rad(dec_bcg)) * np.sin(np.deg2rad(pix_dec))
+             + np.cos(np.deg2rad(dec_bcg)) * np.cos(np.deg2rad(pix_dec))
+             * np.cos(np.deg2rad(pix_ra - ra_bcg)))
+    pix_sep_deg = np.degrees(np.arccos(np.clip(cos_d, -1.0, 1.0)))
+    inner_mask = pix_sep_deg <= peak_max_radius_deg
+    n_search = int(inner_mask.sum())
+    if n_search == 0:
+        print(f"# WARN: peak_edge_buffer_deg={edge_buf:.3f} left zero "
+              f"pixels inside radius {radius_deg:.3f} - {edge_buf:.3f} = "
+              f"{peak_max_radius_deg:.3f} deg; falling back to full map",
+              file=sys.stderr)
+        inner_mask = np.ones_like(sn_e, dtype=bool)
+        n_search = sn_e.size
+    print(f"# peak search restricted to {n_search:,} / {sn_e.size:,} "
+          f"pixels within {peak_max_radius_deg:.3f} deg of BCG "
+          f"(rim buffer = {edge_buf:.3f} deg)",
+          file=sys.stderr)
+    masked_sn_e = np.where(inner_mask, sn_e, -np.inf)
+    peak_arg = int(np.argmax(masked_sn_e))
     peak_ra, peak_dec = hp.pix2ang(
         args.nside_sparse, ipix[peak_arg], lonlat=True, nest=True,
     )

@@ -1,0 +1,463 @@
+# cell_comcam — AnaCal cluster WL on the ComCam DP1 cell coadds
+
+End-to-end pipeline for the AnaCal cluster weak-lensing analysis on the
+DP1 ComCam cell-based coadds: parsl/bps yaml generation, BPS submission,
+per-field diagnostics (spatial, 1-D mag, coadd-vs-cell, GAIA-tangential
+PSF residuals, old-deep-coadd reference matching), and the
+cluster-analysis plots (n(z), mass posterior, tangential shear,
+tangent-plane aperture-mass map + S/N histogram, curved-sky
+HealSparseMap aperture-mass + zoom + histogram).
+
+## Workflow data flow
+
+```
+            ┌─────────────────────┐
+            │ u/pecom/dp1/coadds  │   (cell-coadd predetection input)
+            └─────────┬───────────┘
+                      │
+        bps submit parsl.yaml          ──► one slurm node, ~12 min
+                      │
+                      ▼
+   ┌───────────────────────────────────────────────────────┐
+   │  per-patch products                                   │
+   │  buildCellSystematics → measureCellCoadds → photoZ    │
+   │  -- deep_coadd_cell_anacal_catalog   (269 cols/patch) │
+   │  -- deep_coadd_cell_anacal_fzb_point + _fzb_pdfs      │
+   │  -- deep_coadd_cell_systematics_{mask, noisecorr,     │
+   │     psfcentered, gaia}                                │
+   └────────────────────────┬──────────────────────────────┘
+                            │
+            pipetask … #mergePatches      ──► few seconds / tract
+                            │
+                            ▼
+            ┌──────────────────────────────┐
+            │ deep_coadd_cell_anacal_merged│  per-tract Arrow
+            └──────┬───────────────────────┘  158 cols (4-band) / 202 cols (6-band)
+                   │
+       ┌───────────┼───────────────┬────────────────────────────┐
+       ▼           ▼               ▼                            ▼
+   step2 plots   step3_2 mass   step3_3 mass-map           step3_4 mass-map
+   (spatial,     (χ_t, χ_x,     (flat-sky aperture mass)   (curved-sky / HealSparse)
+   1Dhist,        log M)            
+   gaia_tang,
+   ref_unmatched)
+
+    step3_1 redshift  ──►  reads PER-PATCH PDFs (PDFs are NOT in merged) ─►  source_nz.npz
+```
+
+Every read-from-merged code path is `xlens.utils.nxg.calibrate_shapes`
+compatible at the byte level (merge yaml settings are pinned to align
+with that function — see [Merged catalog schema](#merged-catalog-schema)
+for the alignment details).
+
+## Directory layout
+
+| Path | Purpose |
+|---|---|
+| `scripts/` | All pipeline + plotting code. `step1_*` build parsl yamls; `step2_*` make per-field diagnostics; `step3_1/2/3/4_*` make the cluster-analysis plots. Importable helpers live in `_common.py` and `_step3_common.py`. |
+| `configs/measure_pipeline_4bands.yaml` | Cell-coadd pipeline for **griz-only** fields (a360): `buildCellSystematics` (`starMaskType: default` — step-function halo radii 450/200/100 px for mag ≤ 11/14/20; swap to `no_mask` for the flat-10-px diagnostic mode) → `measureCellCoadds` (`do_measure_flux_gauss: true`, `doPsfHsmMoments: true`) → `photoZ` (`flux_name: gauss2`, `output_pdfs: true`, 4-band model) → `mergePatches` (griz combine, weights = `xlens.utils.nxg._DEFAULT_FPFS_WEIGHTS`, `fpfs_c0: 13.7715` so effective c0=50 at mag_zero=31.4, `do_wcs_correction: false`, `flipu_wcs: false` — together these keep merged `fpfs1_e1/e2` byte-identical to what step3's in-script `calibrate_shapes` would compute from per-patch). |
+| `configs/measure_pipeline_6bands.yaml` | Cell-coadd pipeline for **ugrizy** fields (edfs, ecdfs): same tasks/settings as 4bands but with 6-band reads, the 6-band photoZ model, and `mergePatches` listing all 6 bands while keeping `u`/`y` at zero weight so they pass through as flux columns without affecting the band-combined shape. |
+| `results/` | All per-field outputs. Subfolders are `results/<field>/{step1,step2,step3}/`. Every script writes here via `_common.FIELDS_ROOT` (or, for `step1_generate_parsl_yamls.sh`, `out_dir=$BASE/results/$field/step1`). To relocate, edit `FIELDS_ROOT` once. |
+| `results/a360/` | Per-field assets for Abell 360 (griz). Subfolders: `step1/parsl.yaml`, `step1/runinfo/`, `step1/submit/` (from bps); `step2/*.png`; `step3/*.png` + `source_nz.npz` + `mass_map.hs.fits`. |
+| `results/edfs/` `results/ecdfs/` | Same layout as `results/a360/` but on ugrizy. Both fields are populated (50 successful per-patch for edfs across tracts 2234/2393/2394, 66 for ecdfs across 4848/4849/5063/5064). The eDFS run uses the eROSITA cluster at (59.487317, −49.000349, z = 0.6922); the ecdfs field has no targeted cluster so step3 is skipped there. |
+
+### Per-field step1/step2/step3 completeness
+
+Which artifacts are on disk today for each field. Blanks are "not applicable" (a scripts that requires an input the field doesn't have — a deep-coadd anacal companion for a360-only comparisons, an external reference FITS, or a targeted cluster).
+
+| Stage / script | a360 | edfs | ecdfs |
+|---|---|---|---|
+| `step1/parsl.yaml` | ✓ | ✓ | ✓ |
+| `step2_spacial_distribution.py` → `spatial.png` | ✓ | ✓ | ✓ |
+| `step2_1Dhist.py` → `1Dhist.png` | ✓ (griz) | ✓ (ugrizy) | ✓ (ugrizy) |
+| `step2_gaia_tangential.py` → `gaia_tangential.{png,npz}` | ✓ | ✓ | ✓ |
+| `step2_gaia_tangential_coadd.py` → `gaia_tangential_coadd.{png,npz}` | ✓ | — (no deep-coadd anacal) | — (no deep-coadd anacal) |
+| `step2_compare_coadd_vs_cell.py` → 5 `compare_*.png` | ✓ | — (no deep-coadd anacal) | — (no deep-coadd anacal) |
+| `step2_ref_unmatched.py` → `ref_unmatched.png` | ✓ (DP1 FITS) | ✓ (DP1 FITS) | — (no reference FITS) |
+| step2 ad-hoc: `compare_dp1_vs_dp1v2_radec.png` | — | — | ✓ — one-off DP1↔DP1-v2 RA/Dec cross-check from the 2026-06 migration; not part of the regular step2 sweep. Safe to delete if the migration is settled. |
+| `step3_1_redshift.py` → `redshift.png` + `source_nz.npz` | ✓ | ✓ | — (no cluster) |
+| `step3_2_mass.py` → `mass.png` + `tangential.png` | ✓ | ✓ | — |
+| `step3_3_massmap.py` → `mass_map.png` + `mass_map_hist.png` | ✓ | ✓ | — |
+| `step3_4_massmap_healsparse.py` → `mass_map.hs.fits` + `mass_map_healsparse{,_hist}.png` | ✓ | ✓ | — |
+| `a360_old/` | Frozen reference assets: `setup_lsst_v30.bash` (LSST env), `compare_a360_real_vs_sim.ipynb`, `compare_a360_coadd_vs_cell.ipynb`, plus archived parsl yamls and an older README. Don't edit; only used to seed new fields. |
+
+## Butler collections
+
+| Collection | Role | Notes |
+|---|---|---|
+| `u/pecom/dp1/coadds` | INPUT — `deep_coadd_cell_predetection` per (skymap, tract, patch, band) | The only collection on the DP1 repo that has the cell-coadd predetection. ComCam coverage is **griz** for every tract we care about; `u`/`y` are absent. |
+| `refcats/DM-39298/gaia_dr3_20230707` | INPUT — GAIA DR3 reference catalog | Required for bright-star masking in `BuildCellSystematicsTask`. Always chain alongside `u/pecom/dp1/coadds`. |
+| `u/xiangchl/dp1-v2/<field>_anacal2` | OUTPUT — current cell-coadd runs. All three fields are live (a360, edfs, ecdfs) as CHAINED collections, each composed of one bps RUN (per-patch + photoZ + systematics) and one mergePatches RUN (per-tract merged tables). Run `butler query-collections <repo> "u/xiangchl/dp1-v2*"` for the exact timestamps. Per-field tracts: **a360** = 10463, 10464 (88 per-patch, **269 cols**); **edfs** = 2234, 2393, 2394 (50 per-patch, **391 cols** — extra per-band fluxes/HSM for u and y; tract 2393 merges to zero rows); **ecdfs** = 4848, 4849, 5063, 5064 (66 per-patch, 391 cols; tract 5064 merges to zero rows after the `is_primary + wsel` filter — known edge-of-footprint, not a regression). Contents: `deep_coadd_cell_systematics_*`, `deep_coadd_cell_anacal_catalog` (per-patch, FPFS+gauss fluxes + per-band PSF HSM moments + detection-band fpfs), `deep_coadd_cell_anacal_fzb_point` (photo-z point estimates), `deep_coadd_cell_anacal_fzb_pdfs` (501-bin PDFs — per-patch only), `deep_coadd_cell_systematics_gaia` (per-patch GAIA stars), `deep_coadd_cell_anacal_merged` (per-tract — see [Merged catalog schema](#merged-catalog-schema) for column counts). |
+| `u/xiangchl/dp1/a360_anacal_coadd` | OUTPUT — older deep-coadd run | Used by `step2_compare_coadd_vs_cell.py` and `step2_gaia_tangential_coadd.py`. |
+| `LSSTComCam/DP1`, `skymaps`, `pretrained_models/...` | INPUTS chained by bps | Never modify; ignored by removal commands below. |
+
+The butler repo is always `/global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml`; the skymap is always `lsst_cells_v1`.
+
+## End-to-end recipe (Abell 360 example)
+
+```bash
+# 0. Set up the LSST stack (also chains drp_pipe/drp_tasks/bps_parsl_sites).
+source a360_old/setup_lsst_v30.bash
+
+# 1. Regenerate per-field parsl yamls (dataQuery + payloadName + input chain).
+#    Default PIPELINE_SUBSET in this script is "#buildCellSystematics,
+#    measureCellCoadds,photoZ" — i.e. mergePatches is skipped so each BPS
+#    run finishes in <15 min on debug qos. Clear PIPELINE_SUBSET in the
+#    script to run the merge inside BPS instead.
+scripts/step1_generate_parsl_yamls.sh
+
+# 2. Submit the BPS workflow for the a360 field.
+cd results/a360/step1
+bps submit parsl.yaml      # ~12 minutes; 266 quanta on 1 256-core node
+cd ../../..
+
+# 2b. mergePatches is skipped in the bps PIPELINE_SUBSET by default, so
+#     materialise the per-tract merged tables here. This is what every
+#     step2/step3 script (except step3_1_redshift) reads.
+pipetask run --register-dataset-types \
+    -b /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml \
+    -i u/xiangchl/dp1-v2/a360_anacal2,u/pecom/dp1/coadds,skymaps,LSSTComCam/DP1 \
+    -o u/xiangchl/dp1-v2/a360_anacal2 \
+    -p configs/measure_pipeline_4bands.yaml#mergePatches \
+    -d "skymap='lsst_cells_v1' AND tract IN (10463, 10464)"
+
+# 3. Per-field diagnostics (no cluster-specific knowledge).
+C2="--ra 37.86 --dec 6.98 --radius 1.5 --collection u/xiangchl/dp1-v2/a360_anacal2 --field a360"
+python scripts/step2_spacial_distribution.py $C2
+python scripts/step2_1Dhist.py               $C2 --bands g,r,i,z
+python scripts/step2_compare_coadd_vs_cell.py --ra 37.86 --dec 6.98 --radius 1.5 \
+    --coll-cell  u/xiangchl/dp1-v2/a360_anacal2 \
+    --coll-coadd u/xiangchl/dp1/a360_anacal_coadd --field a360
+python scripts/step2_gaia_tangential.py      $C2 --gaia-mag-bins 8,13,15,17
+python scripts/step2_ref_unmatched.py        $C2 \
+    --ref-catalog /global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1/catalogs/anacal_catalog_a360.fits
+
+# 4. Cluster analysis (must run step3_1 first; it persists source_nz.npz
+#    that step3_2 consumes).
+C3="--ra 37.865017 --dec 6.982205 --z-cl 0.22 --radius 1.5 \
+    --collection u/xiangchl/dp1-v2/a360_anacal2 --field a360 --flux-name gauss2"
+python scripts/step3_1_redshift.py        $C3   # redshift.png + source_nz.npz
+python scripts/step3_2_mass.py            $C3   # mass.png + tangential.png  (emcee, ~40 s)
+python scripts/step3_3_massmap.py         $C3   # mass_map.png + mass_map_hist.png  (~60 s, flat sky)
+python scripts/step3_4_massmap_healsparse.py $C3   # mass_map.hs.fits + zoom PNG + hist (~30 s, curved sky)
+```
+
+All outputs land under `results/<field>/step1/` (parsl + bps),
+`results/<field>/step2/`, `results/<field>/step3/`. Pass `--out <path>`
+(or `--map-out`, `--hist-out`, `--healsparse-out`, etc.) to any
+plotting script to override.
+
+The BPS query center (used by `step1_generate_parsl_yamls.sh` to pick
+patches) and the science cluster center used by step3 are intentionally
+different for edfs — the BPS box is centred on the field (59.10, −48.73)
+so it covers all patches with ugrizy data, while step3 is anchored on
+the eROSITA cluster (59.487317, −49.000349, z = 0.6922).
+
+## Running another field (edfs / ecdfs example)
+
+The recipe is identical to a360, just swap the yaml + tracts. Both
+edfs and ecdfs use the **6-band** pipeline yaml. ecdfs has no targeted
+cluster, so step3 is skipped there.
+
+```bash
+# Submit bps (per-field parsl.yaml already on disk from step 1 above)
+cd results/edfs/step1   && bps submit parsl.yaml && cd ../../..
+cd results/ecdfs/step1  && bps submit parsl.yaml && cd ../../..
+
+# Tract lists are field-dependent — see the Butler-collections table.
+pipetask run --register-dataset-types \
+    -b /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml \
+    -i u/xiangchl/dp1-v2/edfs_anacal2,u/pecom/dp1/coadds,skymaps,LSSTComCam/DP1 \
+    -o u/xiangchl/dp1-v2/edfs_anacal2 \
+    -p configs/measure_pipeline_6bands.yaml#mergePatches \
+    -d "skymap='lsst_cells_v1' AND tract IN (2234, 2393, 2394)"
+
+pipetask run --register-dataset-types \
+    -b /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml \
+    -i u/xiangchl/dp1-v2/ecdfs_anacal2,u/pecom/dp1/coadds,skymaps,LSSTComCam/DP1 \
+    -o u/xiangchl/dp1-v2/ecdfs_anacal2 \
+    -p configs/measure_pipeline_6bands.yaml#mergePatches \
+    -d "skymap='lsst_cells_v1' AND tract IN (4848, 4849, 5063, 5064)"
+
+# step2 diagnostics (use the 6-band bands list for 1Dhist).
+# edfs has a reference catalog at /global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1/catalogs/anacal_catalog_edfs.fits;
+# ecdfs does not — skip step2_ref_unmatched for ecdfs.
+C2e="--ra 59.10 --dec -48.73 --radius 1.5 --collection u/xiangchl/dp1-v2/edfs_anacal2  --field edfs"
+C2c="--ra 53.13 --dec -28.10 --radius 1.5 --collection u/xiangchl/dp1-v2/ecdfs_anacal2 --field ecdfs"
+for C in "$C2e" "$C2c"; do
+  python scripts/step2_spacial_distribution.py $C
+  python scripts/step2_1Dhist.py               $C --bands u,g,r,i,z,y
+  python scripts/step2_gaia_tangential.py      $C --gaia-mag-bins 8,13,15,17
+done
+python scripts/step2_ref_unmatched.py $C2e \
+    --ref-catalog /global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1/catalogs/anacal_catalog_edfs.fits
+```
+
+## Source selection (step3 + step2_gaia_tangential)
+
+Source cuts pass through `xlens.catalog.base.build_selection_mask` — the
+same code path `ShearEstimator._measure` uses for shear-bias accounting
+— wrapped by `_step3_common.select_sources(...)`. The mag/shape/size
+machinery is `dg`-aware (perturbed for selection-response) at `dg=0` by
+default. Every cut is CLI-tunable; defaults reproduce what the cluster
+plots use today.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--flux-name` | `fpfs1` | Suffix for `{band}_flux_{flux-name}`; the cluster plots use `gauss2` (matches the BNL notebook + photoz training). |
+| `--mag-zero` | `31.4` | AB zero-point for the mag cuts. |
+| `--trace-min` | `0.05` | xlens size cut `fpfs_m2 / fpfs_m0 > trace_min` (detection-band moments). Set to a very negative number to disable. |
+| `--emax` | `0.5` | xlens shape cut `|e|^2 < emax^2`. Set very large (e.g. `1000`) to disable. |
+| `--z-col` | `zmode_0` | photo-z column for the source-z cut (BNL DP1 recipe; alt: `zbest_0`). |
+| `--z-min` / `--z-max` | `0.4` / `2.0` | Source photo-z window on `--z-col`. Pass a very large `--z-max` (e.g. `100`) to drop the upper limit. |
+| `--mag-max-per-band` | (built-in 4-band dict) | `'u=27.5,g=27.5,r=24.5,i=27.5,z=27.5,y=27.5'` for the BNL ugrizy recipe; default applies griz cuts {g:25.5, r:25.0, i:23.5, z:24.5}. |
+| `--iband-size-min` | `None` | **Legacy** BNL-notebook size cut on `(i_fpfs1_m20 + i_fpfs1_m00)/i_fpfs1_m00`. Pass `0.1` to apply it on top of `select_sources`. |
+
+Default (xlens-consistent) selection on the current runs, reading the
+merged catalog. Numbers below come from the **2026-06-27** rerun with
+the new gold-rubin FlexZBoost photo-z models
+(`/global/cfs/cdirs/desc-wl/projects/anacal/DP1-v2/photoz/fzb_{4,6}bands/.../model_inform_fzboost.pkl`):
+
+```bash
+# a360 (z_cl = 0.22, low-z cluster). griz default mag cuts; default 7-bin
+# radial profile [0.3, 0.7, …, 6] Mpc:
+C3_A360="--ra 37.865017 --dec 6.982205 --z-cl 0.22 --radius 1.5 \
+    --collection u/xiangchl/dp1-v2/a360_anacal2 --field a360 --flux-name gauss2"
+python scripts/step3_2_mass.py $C3_A360
+# → 39,120 kept rows, χ_t = 5.48, χ_x = 2.77, logM = 14.62 ± 0.13
+
+# edfs (eROSITA cluster z_cl = 0.6922, high-z): looser ugrizy mag cuts,
+# z window above the lens, and 5 log-spaced radial bins from 0.9 Mpc.
+# --fit-rmin-mpc 0.8 is preserved as the canonical knob for excluding
+# inner bins from the NFW fit (here it's a no-op since all bin mids ≥ 1.1).
+C3_EDFS="--ra 59.487317 --dec -49.000349 --z-cl 0.6922 --radius 1.5 \
+    --collection u/xiangchl/dp1-v2/edfs_anacal2 --field edfs --flux-name gauss2 \
+    --z-min 0.76 --z-max 4.5 \
+    --mag-max-per-band u=28,g=27.5,r=26.5,i=25,z=26,y=27 \
+    --bins-mpc 0.9,6,5 --fit-rmin-mpc 0.8"
+python scripts/step3_2_mass.py $C3_EDFS
+# → 22,439 kept rows, χ_t = 3.06, χ_x = 1.52, logM = 14.86 ± 0.20
+```
+
+The tangential-shear x-range on `tangential.png` auto-fits the bin
+centers (10 % log padding on each side), so the same script handles
+both the wide a360 layout (0.3-6 Mpc) and the narrow edfs one
+(0.9-6 Mpc) without manual `xlim` tweaks.
+
+`--bins-mpc` takes either `rmin,rmax,nbins` (log-spaced) or a
+comma-separated list of explicit edges; `--fit-rmin-mpc` keeps every
+bin in the plot but restricts the NFW fit and the printed `χ(tang/cross)`
+to bins above the cut. See the `step3_2_mass.py --help` output for
+the full set of knobs.
+
+`fast_bootstrap_mean` (in `xlens.utils.nxg`) seeds `scipy.stats.bootstrap`
+with `random_state=0` by default, so χ values are reproducible run-to-run.
+Pass `random_state=None` to restore the pre-seed (non-reproducible) behaviour.
+
+To reproduce the older deep-coadd-notebook selection (turn the xlens
+cuts off, add the legacy i-band cut — only works in the **per-patch**
+path because the merged catalog drops per-band moments):
+
+```bash
+python scripts/step3_2_mass.py $C3 \
+    --emax 1000 --trace-min -100 --iband-size-min 0.1
+```
+
+## Scripts reference
+
+| Script | Plot # | Output(s) | Key inputs |
+|---|---|---|---|
+| `step1_build_tract_patch_query.py` | — | a parsl `dataQuery:` block (stdout) | `--ra/--dec/--radius`, `--bands` |
+| `step1_generate_parsl_yamls.sh` | — | `results/<field>/step1/parsl.yaml` for each field | reads the in-script FIELDS array + `PIPELINE_SUBSET` |
+| `step2_spacial_distribution.py` | — | `spatial.png` | merged catalog (`deep_coadd_cell_anacal_merged`) + GAIA layer (`deep_coadd_cell_systematics_gaia`) |
+| `step2_1Dhist.py` | — | `1Dhist.png` | merged catalog, per-band fluxes |
+| `step2_compare_coadd_vs_cell.py` | — | 5 `compare_*.png` | per-patch anacal from both `--coll-cell` and `--coll-coadd`. **a360-only** — needs a companion deep-coadd anacal collection (`u/xiangchl/dp1/a360_anacal_coadd`); no such run exists for edfs / ecdfs. |
+| `step2_gaia_tangential.py` | — | `gaia_tangential.{png,npz}` | **merged catalog** + `deep_coadd_cell_systematics_gaia` (treecorr, 3 mag bins of GAIA lenses); reads pre-combined `fpfs1_e1/e2` directly instead of in-script `calibrate_shapes`. |
+| `step2_gaia_tangential_coadd.py` | — | `gaia_tangential_coadd.{png,npz}` | deep-coadd `deep_coadd_anacal_*` sources + GAIA from a `--gaia-collection` (default: the cell-coadd run). **a360-only**, same reason as `step2_compare_coadd_vs_cell.py`. |
+| `step2_ref_unmatched.py` | — | `ref_unmatched.png` | **merged catalog** (already `is_primary`+`wsel`-filtered) vs `--ref-catalog` (old deep-coadd FITS); 3-layer scatter of all/matched/unmatched within `--ref-match-arcsec` (default 0.6″) with `--ref-imag-max` (default i<24.0) on the reference side; uses `i_flux_gauss2` from merged. **a360 + edfs** — needs an external DP1 reference FITS; ecdfs has none. |
+| `step3_1_redshift.py` | 1 | `redshift.png` + **`source_nz.npz`** | **per-patch** anacal + photoz + `_anacal_fzb_pdfs` (PDFs are NOT in merged). PDFs are **required** — if the collection has no `_fzb_pdfs` the script errors out with a pointer to `photoZ.output_pdfs: true`; there is no zmode-histogram fallback because stacking point estimates drops the photo-z uncertainty and biases the source n(z). |
+| `step3_2_mass.py` | 2 + 3 | `mass.png`, `tangential.png` | **merged catalog**; depends on `source_nz.npz` (run step3_1 first). |
+| `step3_3_massmap.py` | 4 + 5 | `mass_map.png`, `mass_map_hist.png` | **merged catalog**; flat-sky tangent-plane Schirmer aperture mass; zoom set by `--half-extent-deg` (default 0.5°). |
+| `step3_4_massmap_healsparse.py` | 6 + 7 | `mass_map.hs.fits`, `mass_map_healsparse.png`, `mass_map_healsparse_hist.png` | **merged catalog**; curved-sky Schirmer aperture mass on a HealSparseMap (`Map_E`, `Map_B`, `Map_V`, `sn_e`, `sn_b`). Zoom precedence: `--zoom-half-extent-deg` > `--physical-zoom-mpc` > default 0.5° (matches step3_3). |
+
+Shared loaders / helpers live in `_common.py` (butler, find_tracts,
+paths) and `_step3_common.py` (anacal+photoz+pdf join, `load_merged`,
+`select_sources`, `load_context`, `_compute_response_from_merged`).
+`load_context(args, use_merged=True)` is the default; passing
+`load_pdfs=True` (step3_1 only) forces `use_merged=False` and falls
+back to per-patch + `xlens.utils.nxg.calibrate_shapes`.
+All cluster-WL primitives live in **`xlens.utils.{nxg, massmap, match}`**
+(`calibrate_shapes`, `anacal_get_tang_cross`, `fast_bootstrap_mean`
+[seeded, `random_state=0` default], `build_flat_wcs_grid`,
+`compute_mass_map`, `compute_mass_map_healpix`, `schirmer_filter`,
+`sky_match`, `append_specz_columns`, `spec_selection`).
+
+## Merged catalog schema
+
+`deep_coadd_cell_anacal_merged` (one ArrowAstropy table per tract,
+already `is_primary`+`wsel>1e-5`-filtered by `MergePipe._finalize_columns`).
+Column count = **158** for 4-band fields (a360, griz) and **202** for
+6-band fields (edfs / ecdfs, ugrizy) — the only difference is the
+per-band block, which scales linearly with bands. Per-tract row counts
+in the current runs:
+
+| Field | Tract | Rows | Cols |
+|---|---|---|---|
+| a360  | 10463 | 59,198 | 158 |
+| a360  | 10464 | 33,085 | 158 |
+| edfs  | 2234 | 4,229  | 202 |
+| edfs  | 2393 | (empty, dropped by filter) | — |
+| edfs  | 2394 | 44,887 | 202 |
+| ecdfs | 4848 | 9,627  | 202 |
+| ecdfs | 4849 | 15,839 | 202 |
+| ecdfs | 5063 | 55,778 | 202 |
+| ecdfs | 5064 | (empty, dropped by filter) | — |
+
+Per-block layout (4-band counts shown; **6-band counts in parens** where
+they differ):
+
+| Block | # cols | Names |
+|---|---|---|
+| position / sky | 8 | `ra, dec, x1, x2, x1_det, x2_det, mask_value, object_id` |
+| selection / weight | 3 | `wsel, dwsel_dg1, dwsel_dg2` |
+| band-combined FPFS shape + shear response | 12 | `fpfs1_{e1, e2, de1_dg1, de1_dg2, de2_dg1, de2_dg2, m00, dm00_dg1, dm00_dg2, m20, dm20_dg1, dm20_dg2}` — already at the c0=50 normalization (`fpfs_c0=13.7715` in yaml) and the WCS rotation is intentionally **off** so `fpfs1_e1/e2` equal `calibrate_shapes(per-patch)` byte-for-byte. |
+| detection-band raw FPFS (for `build_selection_mask`) | 12 | `fpfs_{e1, e2, de1_dg1, de1_dg2, de2_dg1, de2_dg2, m0, m2, dm0_dg1, dm0_dg2, dm2_dg1, dm2_dg2}` |
+| per-band FPFS fluxes | 16 (**24**) | `{b}_{flux_fpfs1, dflux_fpfs1_dg1, dflux_fpfs1_dg2, flux_fpfs1_err}` for b ∈ {g,r,i,z} (**+ u, y for 6-band**) |
+| per-band gauss2 fluxes | 16 (**24**) | `{b}_{flux_gauss2, dflux_gauss2_dg1, dflux_gauss2_dg2, flux_gauss2_err}` |
+| per-band PSF HSM 2nd-order | 16 (**24**) | `{b}_ext_shapeHSM_HsmPsfMoments_{xx, yy, xy, flag}` (matches DRP `objectTable` naming). One HSM measurement per (cell, band), broadcast to every source in that cell. |
+| per-band PSF HSM higher-order | 40 (**60**) | `{b}_ext_shapeHSM_HigherOrderMomentsPSF_{03, 04, 12, 13, 21, 22, 30, 31, 40, flag}` (orders 3 + 4). |
+| photo-z (per-source) | 35 | 7 statistics × 5 distortion columns: `{zmode, zbest, z025, z160, z500, z840, z975}_{0, 1p, 1m, 2p, 2m}` |
+
+The merge keep-list and the WCS-off / c0=50 alignment are all in
+`xlens/processor/merge.py` (`_finalize_columns`) and
+`configs/measure_pipeline_*bands.yaml` (`mergePatches` block). PDFs are
+**not** carried to merged — step3_1 still reads `_anacal_fzb_pdfs` from
+per-patch to build `source_nz.npz`.
+
+**flipu_wcs** (the merge yamls keep this **off**, `false`, in the
+current a360 run): when enabled, on top of the FPFS flips (negate
+`fpfs1_e2`, `dwsel_dg2`, `fpfs1_de1_dg2`, `fpfs1_de2_dg1`,
+`fpfs1_dm00_dg2`, `fpfs1_dm20_dg2`, every per-band
+`{b}_dflux_fpfs1_dg2`; swap photo-z `_2p` ↔ `_2m`), also negates the
+spin-2 PSF moments — `{b}_ext_shapeHSM_HsmPsfMoments_xy` and every
+`{b}_ext_shapeHSM_HigherOrderMomentsPSF_{pq}` whose leading x-power
+`p` is odd (M_12, M_30, M_13, M_31). Converts GalSim u=West to LSST
+u=East. **Caveat:** tested on 2026-06-24 and it broke step3's
+cluster χ_t (5.46 → 1.11) because
+`xlens.utils.nxg.anacal_get_tang_cross` still computes the
+source-to-lens position angle in the image-pixel frame. Keep this
+`false` until the tangential rotation has been moved to the sky
+convention.
+
+## Published FITS catalogs (DP1-v2)
+
+Shared root (moved off `/pscratch` to a persistent CFS location on
+2026-06-26): **`/global/cfs/cdirs/lsst/groups/WL/projects/anacal/`**
+(group-readable under `lsst`). The DP1 reference catalogs and the
+DP1-v2 outputs sit side-by-side under that root as `DP1/` and
+`DP1-v2/` — file names match across both releases.
+
+Per-field merged catalogs (all tracts vstacked, written via
+`astropy.io.fits` from the `deep_coadd_cell_anacal_merged` butler
+products):
+
+| File | Field | Rows | Cols | PSF HSM cols | Size |
+|---|---|---|---|---|---|
+| `/global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1-v2/catalogs/anacal_catalog_a360.fits`  | a360  | 92,283 | 158 | 56 (4 × 14) | 94 MB  |
+| `/global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1-v2/catalogs/anacal_catalog_edfs.fits`  | edfs  | 49,116 | 202 | 84 (6 × 14) | 65 MB  |
+| `/global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1-v2/catalogs/anacal_catalog_ecdfs.fits` | ecdfs | 81,244 | 202 | 84 (6 × 14) | 108 MB |
+
+Filename convention matches the older deep-coadd publication under
+`/global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1/catalogs/`. To regenerate after a
+re-merge, vstack the per-tract merged butler products and
+`Table.write(out, overwrite=True)`.
+
+## Reference catalogs (old deep-coadd version)
+
+External per-field anacal catalogs from the older deep-coadd run, used
+by `step2_ref_unmatched.py` (and seed inputs for `step3_*` cross-checks):
+
+| Field | Path | Rows |
+|---|---|---|
+| a360 | `/global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1/catalogs/anacal_catalog_a360.fits` | 113,945 |
+| edfs | `/global/cfs/cdirs/lsst/groups/WL/projects/anacal/DP1/catalogs/anacal_catalog_edfs.fits` | 89,354 |
+
+Same magnitude convention as our pipeline: `mag = 31.4 − 2.5·log10(i_flux_gauss2)`.
+
+## GAIA bright-star masking (`starMaskType`)
+
+Both `BuildSystematicsTask` (deep-coadd) and `BuildCellSystematicsTask`
+(cell-coadd) share `xlens.utils.mask.{get_gaia_table, build_gaia_xyr}`
+for the GAIA bright-star halo mask. The per-star halo radius comes
+from a named function registered in
+`xlens.utils.mask.STAR_MASK_RADIUS_FUNCS`; the task picks one by name
+via its `starMaskType: <name>` config.
+
+| `starMaskType` | Mag cut | Halo radius |
+|---|---|---|
+| `"default"` (pipeline default; also pinned in both yamls) | `mag ≤ 20` | step: 450 px (`≤ 11`) / 200 (`≤ 14`) / 100 (`≤ 20`) |
+| `"no_mask"` (diagnostic) | `mag ≤ 20` | flat 10 px for every star |
+
+Add a new model from any module by appending to the registry::
+
+```python
+import numpy as np
+from xlens.utils.mask import STAR_MASK_RADIUS_FUNCS
+
+def isophotal(mag, mag_limit=22.0, slope=5.0):
+    return np.maximum(0.0, slope * (mag_limit - mag) ** 2)
+
+STAR_MASK_RADIUS_FUNCS["isophotal"] = isophotal
+```
+
+Then set `starMaskType: isophotal` in the pipeline yaml. The
+`ChoiceField` on the task config validates against the registry, so
+typos / unregistered names fail at task construction with a clear
+`FieldValidationError`.
+
+**Behaviour change vs. old code** — `BuildSystematicsTask` (deep-coadd)
+previously cut at `mag ≤ 17` for the bright-star mask; consolidating
+on the cell-version `mag ≤ 20` rule means 17 < mag ≤ 20 GAIA stars
+now also get a 100-px halo on the deep-coadd path. Same shape as the
+cell-coadd path.
+
+## Cleaning up runs
+
+```bash
+# Remove the CHAINED + RUN for a360_anacal2 (keep the chained inputs alone).
+# Note: remove-collections must run BEFORE remove-runs, otherwise butler
+# refuses with "Removing runs that are in parent CHAINED collections
+# requires confirmation" — or pass --force to remove-runs to unlink the
+# RUN from its parent CHAINED in one step.
+butler remove-collections <repo> u/xiangchl/dp1-v2/a360_anacal2 --no-confirm
+butler remove-runs        <repo> "u/xiangchl/dp1-v2/a360_anacal2/*" --no-confirm
+# Disk dirs are left behind after remove-runs purges datasets; sweep
+# them with:
+find <repo>/u/xiangchl/dp1-v2/a360_anacal2/ -mindepth 1 -maxdepth 1 -type d -empty -delete
+```
+
+`butler query-collections <repo> "u/xiangchl/dp1-v2*"` lists what's there.
+
+**Re-merging without a fresh bps**: when only the `mergePatches` block of
+the yaml changed (e.g. tweaking `band_weights`, `fpfs_c0`,
+`do_wcs_correction`, `flipu_wcs`, or the merge keep-list), the per-patch
+catalogs are unchanged — there's no need to re-submit bps. Prune just
+the merged datasets and re-run mergePatches alone (≈45 s for a 2-tract
+field, ≈12 min saved vs. a full bps re-submit):
+
+```python
+from lsst.daf.butler import Butler
+b = Butler('<repo>', collections='u/xiangchl/dp1-v2/<field>_anacal2', writeable=True)
+refs = list(b.registry.queryDatasets(
+    'deep_coadd_cell_anacal_merged', where="skymap='lsst_cells_v1'"))
+b.pruneDatasets(refs, unstore=True, purge=True)
+```
+then the same `pipetask … #mergePatches` invocation as in step 2b above.
+
+## Dependencies (LSST `lsst-scipipe-12.1.0-exact-ext` env)
+
+`numpy`, `matplotlib`, `astropy`, `scipy`, `healpy`, `healsparse`,
+`treecorr`, `clmm`, `emcee`, `lsst.daf.butler`, `lsst.geom`,
+`lsst.afw.image`, plus an editable install of `xlens` (selection helpers
++ cluster-WL primitives) and `bps_parsl_sites` (parsl-based BPS backend;
+sourced by `setup_lsst_v30.bash`).

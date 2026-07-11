@@ -38,6 +38,7 @@ from _common import (
     DEFAULT_REPO, DEFAULT_SKYMAP,
     find_tracts, open_butler, resolve_field_out,
 )
+from xlens.catalog.utils import flux_to_mag
 
 
 DEFAULT_DATASET = "deep_coadd_cell_anacal_merged"
@@ -112,10 +113,6 @@ def load_merged_catalog(butler, dataset_type, tract_ids, skymap_name):
     return vstack(tables, metadata_conflicts="silent")
 
 
-def imag_from_iflux(iflux, mag_zero):
-    return mag_zero - 2.5*np.log10(np.where(iflux > 0, iflux, np.nan))
-
-
 def split_matched(*, ref_path, our_ra, our_dec,
                   ref_imag_max, mag_zero, match_arcsec):
     """Sky-match every ref source to ours; return (matched, unmatched).
@@ -129,7 +126,7 @@ def split_matched(*, ref_path, our_ra, our_dec,
         iflux = np.asarray(d["i_flux_gauss2"], dtype=np.float64)
     keep = np.ones(len(ra), dtype=bool)
     if np.isfinite(ref_imag_max):
-        imag = imag_from_iflux(iflux, mag_zero)
+        imag = flux_to_mag(iflux, mag_zero=mag_zero, bad_value=np.nan)
         keep = np.isfinite(imag) & (imag < ref_imag_max)
         print(f"# ref-catalog: {len(ra):,} rows -> i<{ref_imag_max} kept: "
               f"{int(keep.sum()):,}", file=sys.stderr)
@@ -159,7 +156,7 @@ def main():
     our_ra_all = np.asarray(anacal["ra"], dtype=np.float64)
     our_dec_all = np.asarray(anacal["dec"], dtype=np.float64)
     our_iflux = np.asarray(anacal["i_flux_gauss2"], dtype=np.float64)
-    our_imag = imag_from_iflux(our_iflux, args.mag_zero)
+    our_imag = flux_to_mag(our_iflux, mag_zero=args.mag_zero, bad_value=np.nan)
     if np.isfinite(args.our_imag_max):
         keep_ours = np.isfinite(our_imag) & (our_imag < args.our_imag_max)
         print(f"# pipeline: {len(our_ra_all):,} primary sources -> "

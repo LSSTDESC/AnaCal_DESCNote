@@ -9,6 +9,11 @@ tasks:
     class: xlens.processor.build_cell_systematics.BuildCellSystematicsTask
     config:
       bands: ["u", "g", "r", "i", "z", "y"]
+      # Step-function halo radii (450/200/100 px for mag <= 11/14/20).
+      # Swap to "no_mask" for the diagnostic mode that puts a flat 10 px
+      # halo on every GAIA star with mag <= 20.  Additional models can
+      # be registered in xlens.utils.mask.STAR_MASK_RADIUS_FUNCS.
+      starMaskType: default
 
   measureCellCoadds:
     class: xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe
@@ -19,13 +24,14 @@ tasks:
       fpfs.do_noise_bias_correction: True
       fpfs.sigma_shapelets1: 0.707
       do_measure_flux_gauss: True
+      doPsfHsmMoments: True
       bands: ["u", "g", "r", "i", "z", "y"]
 
   photoZ:
     class: xlens.processor.photoz.photoZPipe
     config:
       connections.inputName: deep_coadd_cell
-      model_path: /global/u2/x/xiangchl/superonion/code/model_6bands_fzboost.pkl
+      model_path: /global/cfs/cdirs/desc-wl/projects/anacal/DP1-v2/photoz/fzb_6bands/projects/com_cam/data/gold_rubin/model_inform_fzboost.pkl
       mag_zero: 31.4
       flux_name: gauss2
       bands: ugrizy

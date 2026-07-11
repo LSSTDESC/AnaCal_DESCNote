@@ -67,16 +67,6 @@ def resolve_field_out(field: Optional[str], subdir: str, name: str,
     return str(out)
 
 
-def compute_mag(values, mag_zero=31.4):
-    """``mag_zero - 2.5 * log10(values)``; non-positive / non-finite -> NaN."""
-    arr = np.asarray(values, dtype=np.float64)
-    out = np.full(arr.shape, np.nan, dtype=np.float64)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        m = np.isfinite(arr) & (arr > 0)
-        out[m] = mag_zero - 2.5 * np.log10(arr[m])
-    return out
-
-
 # Default plot-style rc-context, used by most step2/step3 figures.
 DEFAULT_STYLE_RC = {
     "font.size": 14, "axes.titlesize": 14, "axes.labelsize": 14,

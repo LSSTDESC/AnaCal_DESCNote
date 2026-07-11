@@ -60,10 +60,6 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     add_common_args(p)
-    p.add_argument("--zmode-col", default="zmode_0",
-                   help="point-estimate column for the histogram fallback (default: zmode_0)")
-    p.add_argument("--bins", type=int, default=80,
-                   help="bins for the histogram fallback (default: 80)")
     p.add_argument("--xlim", default="0,3", help="x-axis (z) limits, comma-separated")
     p.add_argument("--nz-out", default=None,
                    help="explicit path for the saved n(z) .npz "
@@ -81,17 +77,6 @@ def build_nz_from_pdfs(pdfs_all, pdfs_sel, response_sel):
     return src_norm, full_norm
 
 
-def build_nz_from_zmode(table_all, table, zmode_col, bins):
-    """R-weighted source histogram + uniform-weight full histogram of zmode."""
-    zs_src = np.asarray(table[zmode_col])
-    ws_src = np.asarray(table["response"])
-    zs_all = np.asarray(table_all[zmode_col])
-    h_src, edges = np.histogram(zs_src, bins=bins, weights=ws_src, density=True)
-    h_all, _ = np.histogram(zs_all, bins=edges, density=True)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    return centers, h_src, h_all
-
-
 def main():
     args = parse_args()
     out_path = resolve_out(args, DEFAULT_OUT_NAME)
@@ -103,7 +88,16 @@ def main():
     table = ctx["table"]
     table_all = ctx["table_all"]
     z_cl = ctx["z_cl"]
-    use_pdfs = pdfs_all is not None and pdfs is not None
+    if pdfs_all is None or pdfs is None:
+        # No silent fallback to a zmode histogram — stacking point
+        # estimates would drop the photo-z uncertainty and bias any
+        # downstream beta integral against the source n(z).
+        raise RuntimeError(
+            "step3_1 requires per-source photo-z PDFs "
+            "(`deep_coadd_cell_anacal_fzb_pdfs`).  Rerun bps with "
+            "`photoZ.output_pdfs: true` or point --collection at a run "
+            "that has PDFs; do not stack zmode point estimates."
+        )
 
     with plt.rc_context({
         "font.size": 14, "axes.titlesize": 14, "axes.labelsize": 14,
@@ -115,35 +109,24 @@ def main():
         fig, ax = plt.subplots(figsize=(7.5, 4.5))
         cmap = cm.coolwarm
 
-        if use_pdfs:
-            src_norm, full_norm = build_nz_from_pdfs(
-                pdfs_all, pdfs, table["response"],
-            )
-            ax.plot(Z_GRID, src_norm, "-", color=cmap(0.92), lw=2.0,
-                    label="source sample (R-weighted PDF stack)")
-            ax.plot(Z_GRID, full_norm, "-", color=cmap(0.08), lw=2.0,
-                    label="full sample (PDF stack)")
+        src_norm, full_norm = build_nz_from_pdfs(
+            pdfs_all, pdfs, table["response"],
+        )
+        ax.plot(Z_GRID, src_norm, "-", color=cmap(0.92), lw=2.0,
+                label="source sample (R-weighted PDF stack)")
+        ax.plot(Z_GRID, full_norm, "-", color=cmap(0.08), lw=2.0,
+                label="full sample (PDF stack)")
 
-            # Persist so step3_mass.py can reuse the same n(z).
-            nz_path = nz_npz_path(args.field, args.nz_out)
-            if nz_path is not None:
-                nz_path.parent.mkdir(parents=True, exist_ok=True)
-                np.savez(
-                    nz_path,
-                    z=Z_GRID, src_nz=src_norm, full_nz=full_norm,
-                    n_src=len(table), n_full=len(table_all),
-                )
-                print(f"# wrote {nz_path}", file=sys.stderr)
-        else:
-            print(f"# WARN: no PDF dataset — falling back to {args.zmode_col} histogram",
-                  file=sys.stderr)
-            centers, h_src, h_all = build_nz_from_zmode(
-                table_all, table, args.zmode_col, args.bins,
+        # Persist so step3_mass.py can reuse the same n(z).
+        nz_path = nz_npz_path(args.field, args.nz_out)
+        if nz_path is not None:
+            nz_path.parent.mkdir(parents=True, exist_ok=True)
+            np.savez(
+                nz_path,
+                z=Z_GRID, src_nz=src_norm, full_nz=full_norm,
+                n_src=len(table), n_full=len(table_all),
             )
-            ax.plot(centers, h_src, "-", color=cmap(0.92), lw=2.0,
-                    label=f"source sample ({args.zmode_col}, R-weighted)")
-            ax.plot(centers, h_all, "-", color=cmap(0.08), lw=2.0,
-                    label=f"full sample   ({args.zmode_col})")
+            print(f"# wrote {nz_path}", file=sys.stderr)
 
         ax.axvline(z_cl, ls="--", color="k", alpha=0.5,
                    label=rf"$z_{{cl}}={z_cl:g}$")

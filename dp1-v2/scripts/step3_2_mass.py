@@ -56,6 +56,13 @@ def parse_args():
     add_common_args(p)
     p.add_argument("--nfw-c", type=float, default=4.0,
                    help="fixed NFW concentration (default: 4)")
+    p.add_argument("--fit-rmin-mpc", type=float, default=None,
+                   help="when set, only radial bins with mean radius >= this "
+                        "value (Mpc) are used in the curve_fit + emcee NFW "
+                        "fit. All bins are still plotted on tangential.png; "
+                        "the chi(tang) / chi(cross) printout is also "
+                        "computed only over the kept bins so it matches the "
+                        "fitted region. Default: use every bin.")
     p.add_argument("--bins-mpc", default=None,
                    help="radial bin edges in Mpc. Pass either "
                         "'rmin,rmax,nbins' for log-spaced edges (e.g. "
@@ -187,7 +194,13 @@ def make_tangential_plot(*, bin_mids, tang_avg, cross_avg, tang_err, cross_err,
         ax.axhline(0, ls=":", color="k", alpha=0.6)
         ax.semilogx()
         ax.set_ylim(-0.05, 0.10)
-        ax.set_xlim(0.45, 7.5)
+        # Auto-size x range: 10% log padding around the bin centers so
+        # the same plotting code handles both narrow (e.g. 1-6 Mpc) and
+        # wide (e.g. 0.3-6 Mpc) bin layouts cleanly.
+        log_pad = 0.07  # ~17% on the linear axis
+        x_lo = 10 ** (np.log10(bin_mids[0])  - log_pad)
+        x_hi = 10 ** (np.log10(bin_mids[-1]) + log_pad)
+        ax.set_xlim(x_lo, x_hi)
         ax.set_xlabel(r"$R$ [Mpc]")
         ax.set_ylabel("reduced shear")
         ax.yaxis.set_major_locator(MultipleLocator(0.02))
@@ -296,10 +309,23 @@ def main():
     )
     profile = gc.profile
 
-    fn, init = fit_curve(profile, beta_s, beta_s_sqr, args.nfw_c, z_cl, cosmo)
+    # Restrict the fit to bins above --fit-rmin-mpc (default: all bins).
+    if args.fit_rmin_mpc is not None:
+        fit_mask = np.asarray(profile["radius"]) >= args.fit_rmin_mpc
+        fit_profile = profile[fit_mask]
+        n_kept, n_total = int(fit_mask.sum()), len(profile)
+        print(f"# fit_rmin_mpc={args.fit_rmin_mpc}: using {n_kept}/{n_total} "
+              f"bins (radii kept = "
+              f"{np.asarray(fit_profile['radius']).round(2).tolist()})",
+              file=sys.stderr)
+    else:
+        fit_profile = profile
+        fit_mask = np.ones(len(profile), dtype=bool)
+
+    fn, init = fit_curve(fit_profile, beta_s, beta_s_sqr, args.nfw_c, z_cl, cosmo)
     print(f"# curve_fit logM = {init['vals'][0]:.3f} +- {init['err'][0]:.3f}",
           file=sys.stderr)
-    chain, ll = run_emcee(profile, fn, init, args.nwalkers, args.nsteps)
+    chain, ll = run_emcee(fit_profile, fn, init, args.nwalkers, args.nsteps)
     fin = np.isfinite(ll)
     chain, ll = chain[fin], ll[fin]
     lo, hi, dx = (float(x) for x in args.mass_bins.split(","))
@@ -335,9 +361,13 @@ def main():
         cl_shear, sky_distance, bins_mpc, res, ci_level=args.ci_level,
     )
     tang_avg, cross_avg, tang_err, cross_err = shear_cl[:4]
-    chi2_t = np.sum(tang_avg ** 2 / ((tang_err[:, 0] - tang_err[:, 1]) / 2.0) ** 2)
-    chi2_x = np.sum(cross_avg ** 2 / ((cross_err[:, 0] - cross_err[:, 1]) / 2.0) ** 2)
-    print(f"# chi(tang)={np.sqrt(chi2_t):.2f}  chi(cross)={np.sqrt(chi2_x):.2f}",
+    # chi^2 is summed only over bins that entered the NFW fit so the
+    # reported chi(tang) / chi(cross) match the "best-fit" solid line.
+    fm = fit_mask
+    chi2_t = np.sum(tang_avg[fm] ** 2 / ((tang_err[fm, 0] - tang_err[fm, 1]) / 2.0) ** 2)
+    chi2_x = np.sum(cross_avg[fm] ** 2 / ((cross_err[fm, 0] - cross_err[fm, 1]) / 2.0) ** 2)
+    print(f"# chi(tang)={np.sqrt(chi2_t):.2f}  chi(cross)={np.sqrt(chi2_x):.2f}"
+          f"  (over {int(fm.sum())} fitted bin{'s' if fm.sum() != 1 else ''})",
           file=sys.stderr)
 
     # NFW overlay at the best-fit mass from the emcee posterior, using

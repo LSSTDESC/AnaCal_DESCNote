@@ -28,6 +28,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from xlens.utils.nxg import calibrate_shapes  # noqa: E402
 from xlens.catalog.base import build_selection_mask  # noqa: E402
+from xlens.catalog.utils import flux_to_mag  # noqa: E402
 
 
 from _common import (
@@ -289,12 +290,15 @@ default_selection = select_sources
 
 
 def add_band_mags(table, mag_zero=31.4, flux_name="fpfs1"):
-    """Add `{band}_mag` columns derived from `{band}_flux_{flux_name}`.
+    """Add ``{band}_mag`` columns derived from ``{band}_flux_{flux_name}``.
 
     No longer used by ``default_selection`` (which now computes mags
     internally via ``build_selection_mask``), but kept for any script
     that still expects ``{band}_mag`` columns on the loaded table
-    (e.g. step2_compare diagnostics).
+    (e.g. step2_compare diagnostics, step2_gaia_tangential*).
+    Bad (non-positive) flux rows become NaN so plotting code
+    (histogram / imshow) simply drops them instead of piling at a
+    sentinel mag.
     """
     for b in ("g", "r", "i", "z"):
         col = f"{b}_flux_{flux_name}"
@@ -303,10 +307,11 @@ def add_band_mags(table, mag_zero=31.4, flux_name="fpfs1"):
                 f"missing column {col!r} (try --flux-name fpfs1, or rerun the "
                 f"pipeline with do_measure_flux_gauss=True for gauss2)"
             )
-        with np.errstate(divide="ignore", invalid="ignore"):
-            table[f"{b}_mag"] = mag_zero - 2.5 * np.log10(
-                np.asarray(table[col], dtype=np.float64)
-            )
+        table[f"{b}_mag"] = flux_to_mag(
+            np.asarray(table[col], dtype=np.float64),
+            mag_zero=mag_zero,
+            bad_value=np.nan,
+        )
     return table
 
 
