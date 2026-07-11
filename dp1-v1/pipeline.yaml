@@ -1,0 +1,19 @@
+description: A simple pipeline to test development of AnaCal
+
+instrument: lsst.obs.lsst.LsstComCam
+
+tasks:
+    buildSys:
+        class: xlens.processor.build_systematics.BuildSystematicsTask
+        config:
+            connections.coaddName: deep
+            badMaskPlanes : ["BAD", "CR", "NO_DATA", "SAT"]
+    measureCoadds:
+        class: xlens.processor.measure_coadds.MeasureCoaddsPipe
+        config:
+            anacal.sigma_arcsec: 0.5
+            anacal.do_noise_bias_correction: True
+            anacal.validate_psf: False
+            fpfs.sigma_shapelets1: 0.707
+            fpfs.do_noise_bias_correction: True
+            connections.coaddName: deep
