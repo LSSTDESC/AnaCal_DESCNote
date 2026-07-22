@@ -1,0 +1,71 @@
+description: |
+  Cell-based coadd systematics, FPFS measurement, photo-z, and
+  tract-level merge — 6-band ugrizy variant (edfs, ecdfs).  v3 rebuild
+  against the newly-pulled xlens where columns are survey-prefixed
+  (``lsst_g_flux_fpfs1`` etc.), fluxes are normalised onto the fixed
+  ``xlens.utils.constants.MAG_ZERO_AB=31.4`` zeropoint, and the new
+  smooth-truncated mag family is written by ``measureCellCoadds`` via
+  ``add_magnitude_columns``.
+
+instrument: lsst.obs.lsst.LsstComCam
+
+tasks:
+  buildCellSystematics:
+    class: xlens.processor.build_cell_systematics.BuildCellSystematicsTask
+    config:
+      starMaskType: default
+      bands: ["u", "g", "r", "i", "z", "y"]
+
+  measureCellCoadds:
+    class: xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe
+    config:
+      connections.inputName: deep_coadd_cell
+      anacal.do_noise_bias_correction: True
+      anacal.sigma_arcsec: 0.5
+      fpfs.do_noise_bias_correction: True
+      fpfs.sigma_shapelets1: 0.707
+      do_measure_flux_gauss: True
+      doPsfHsmMoments: True
+      bands: ["u", "g", "r", "i", "z", "y"]
+
+  photoZ:
+    class: xlens.processor.photoz.photoZPipe
+    config:
+      connections.inputName: deep_coadd_cell
+      model_path: /global/cfs/cdirs/desc-wl/projects/anacal/DP1-v2/photoz/fzb_6bands/projects/com_cam/data/gold_rubin/model_inform_fzboost.pkl
+      flux_name: gauss2
+      bands: ["lsst_u", "lsst_g", "lsst_r", "lsst_i", "lsst_z", "lsst_y"]
+      ref_band: lsst_i
+      do_distortions: true
+      output_pdfs: true
+
+  mergePatches:
+    class: xlens.processor.merge.MergePipe
+    config:
+      connections.inputName: deep_coadd_cell
+      # All six bands listed so the merged catalog carries per-band
+      # u/y flux columns (used by step2 1Dhist). The shape combination
+      # itself stays griz-only — u and y are given zero band_weights,
+      # so they pass through as flux columns but contribute nothing to
+      # the band-combined moments.
+      bands:
+        - "lsst_u"
+        - "lsst_g"
+        - "lsst_r"
+        - "lsst_i"
+        - "lsst_z"
+        - "lsst_y"
+      # griz defaults from xlens.utils.nxg._DEFAULT_FPFS_WEIGHTS.
+      # u and y are forced to 0 — shape information from those bands
+      # is poor on ComCam DP1 and should not enter the band-combined
+      # moments.
+      band_weights:
+        - 0.0                     # lsst_u (flux pass-through only)
+        - 0.5287963721184084      # lsst_g
+        - 0.33049707056512084     # lsst_r
+        - 0.1362332926465851      # lsst_i
+        - 0.004473264669885652    # lsst_z
+        - 0.0                     # lsst_y (flux pass-through only)
+      fpfs_c0: 13.771538667129038
+      do_wcs_correction: false
+      flipu_wcs: false

@@ -1,0 +1,80 @@
+description: |
+  Cell-based coadd systematics, FPFS measurement, photo-z, and
+  tract-level merge — v3 rebuild against the newly-pulled xlens where
+  columns are survey-prefixed (``lsst_g_flux_fpfs1`` etc.), fluxes are
+  normalised onto the fixed ``xlens.utils.constants.MAG_ZERO_AB=31.4``
+  zeropoint, and the new smooth-truncated mag family is written by
+  ``measureCellCoadds`` via ``add_magnitude_columns``.
+
+instrument: lsst.obs.lsst.LsstComCam
+
+tasks:
+  buildCellSystematics:
+    class: xlens.processor.build_cell_systematics.BuildCellSystematicsTask
+    config:
+      # Step-function halo radii (450/200/100 px for mag <= 11/14/20).
+      # Swap to "no_mask" for the diagnostic mode that puts a flat 10 px
+      # halo on every GAIA star with mag <= 20.  Additional models can
+      # be registered in xlens.utils.mask.STAR_MASK_RADIUS_FUNCS.
+      starMaskType: default
+
+  measureCellCoadds:
+    class: xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe
+    config:
+      connections.inputName: deep_coadd_cell
+      anacal.do_noise_bias_correction: True
+      anacal.sigma_arcsec: 0.5
+      fpfs.do_noise_bias_correction: True
+      fpfs.sigma_shapelets1: 0.707
+      do_measure_flux_gauss: True
+      doPsfHsmMoments: True
+      # PHYSICAL bands (butler dimension). Output columns are written
+      # with the survey prefix set by ``survey`` (default "lsst"),
+      # giving ``lsst_g_flux_fpfs1`` etc.
+      bands: ["g", "r", "i", "z"]
+
+  photoZ:
+    class: xlens.processor.photoz.photoZPipe
+    config:
+      connections.inputName: deep_coadd_cell
+      model_path: /global/cfs/cdirs/desc-wl/projects/anacal/DP1-v2/photoz/fzb_4bands/projects/com_cam/data/gold_rubin/model_inform_fzboost.pkl
+      # New photoZ reads survey-prefixed columns.  ``mag_zero`` field
+      # is gone — the task now uses ``MAG_ZERO_AB`` from the fixed
+      # constant.
+      flux_name: gauss2
+      bands: ["lsst_g", "lsst_r", "lsst_i", "lsst_z"]
+      ref_band: lsst_i
+      do_distortions: true
+      output_pdfs: true
+
+  mergePatches:
+    class: xlens.processor.merge.MergePipe
+    config:
+      connections.inputName: deep_coadd_cell
+      # Survey-prefixed bands (matches the columns measureCellCoadds
+      # writes).
+      bands: ["lsst_g", "lsst_r", "lsst_i", "lsst_z"]
+      # Defaults of xlens.utils.nxg._DEFAULT_FPFS_WEIGHTS so the
+      # band-combined fpfs1_e1/e2 written here exactly equals what
+      # step3's calibrate_shapes would compute from per-patch.
+      band_weights:
+        - 0.5287963721184084    # lsst_g
+        - 0.33049707056512084   # lsst_r
+        - 0.1362332926465851    # lsst_i
+        - 0.004473264669885652  # lsst_z
+      # ``fpfs_c0`` in the new schema still needs a value; the fixed
+      # ``MAG_ZERO_AB = 31.4`` zeropoint makes the calibrate_shapes
+      # default c0=50 correspond to
+      # ``fpfs_c0 = 50 / 10**((31.4 - 30) / 2.5) = 13.771538667...``.
+      fpfs_c0: 13.771538667129038
+      # Step3 reads the merged catalog directly; turn off the local
+      # WCS rotation so merged fpfs1_e1/e2 stay in the same frame
+      # calibrate_shapes produced from per-patch.
+      do_wcs_correction: false
+      # flipu_wcs=true was tried and broke the cluster tangential
+      # signal in step3 (chi dropped 5.46 -> 1.11). The likely cause
+      # is a frame mismatch: flipu negates e2 (image -> sky), but
+      # xlens.utils.nxg.anacal_get_tang_cross still computes the
+      # position angle in the image frame. Keep this False until the
+      # tangential rotation is updated to the sky convention.
+      flipu_wcs: false
