@@ -103,29 +103,29 @@ PSF ellipticity is the additive-bias test — leakage would show as a
 slope. γ₁ is flat (p = 0.12–0.89) and γ₂ is unremarkable in five of six
 panels after these cuts; PSF e2 (i) remains at p = 0.05.
 
-![mean shear vs PSF ellipticity](figures2/meanshear_psf_shape.png)
-![mean shear vs PSF FWHM](figures2/meanshear_psf_size.png)
+![mean shear vs PSF ellipticity](./figures2/meanshear_psf_shape.png)
+![mean shear vs PSF FWHM](./figures2/meanshear_psf_size.png)
 
 ### Mean shear vs photometry
 
-![mean shear vs magnitude](figures2/meanshear_mag.png)
-![mean shear vs S/N](figures2/meanshear_snr.png)
-![mean shear vs colour](figures2/meanshear_photometry.png)
+![mean shear vs magnitude](./figures2/meanshear_mag.png)
+![mean shear vs S/N](./figures2/meanshear_snr.png)
+![mean shear vs colour](./figures2/meanshear_photometry.png)
 
 ### Mean shear vs depth and survey properties
 
 `flux_gauss2_err` is a depth/seeing label rather than a galaxy property
 — DP2 carries no `nImage`, so it is the only depth axis available. (TODO: need updates)
 
-![mean shear vs flux error](figures2/meanshear_fluxerr.png)
-![mean shear vs mask fractions](figures2/meanshear_survey.png)
-![mean shear vs background](figures2/meanshear_bkg.png)
+![mean shear vs flux error](./figures2/meanshear_fluxerr.png)
+![mean shear vs mask fractions](./figures2/meanshear_survey.png)
+![mean shear vs background](./figures2/meanshear_bkg.png)
 
 ### Mean shear vs shape
 
-![mean shear vs trace and |e|](figures2/meanshear_shape.png)
+![mean shear vs trace and |e|](./figures2/meanshear_shape.png)
 
 ### Distributions
 
-![1-D distributions](figures2/hist_1d.png)
-![2-D distributions](figures2/hist_2d.png)
+![1-D distributions](./figures2/hist_1d.png)
+![2-D distributions](./figures2/hist_2d.png)
