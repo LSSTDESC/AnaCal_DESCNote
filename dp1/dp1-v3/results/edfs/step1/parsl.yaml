@@ -1,0 +1,51 @@
+LSST_VERSION: v30.0.4.rc1
+instrumnet: LSSTComCam
+
+# v3 rebuild: buildCellSystematics + measureCellCoadds + photoZ on the
+# newly pulled xlens/anacal (survey-prefixed band names,
+# MAG_ZERO_AB-normalised fluxes, smooth-truncated mag family with
+# mag_err / dmag_err_dg naming).  mergePatches is left out of the BPS
+# run — invoke separately via pipetask so the whole workflow fits in
+# the debug qos envelope.
+pipelineYaml: "/global/homes/x/xiangchl/superonion/code/AnaCal_DESCNote/dp1-v3/configs/measure_pipeline_6bands.yaml#buildCellSystematics,measureCellCoadds,photoZ"
+wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
+computeSite: work_queue
+
+pipetask:
+  cmdlineArgs: ["--register-dataset-types"]
+
+site:
+    local:
+        class: lsst.ctrl.bps.parsl.sites.Local
+        cores: 1
+        monitorEnable: true
+        monitorFilename: runinfo/monitoring.db
+    work_queue:
+        class: bps_parsl_sites.SlurmWorkQueue
+        nodes_per_block: 1
+        cores_per_node: 256
+        qos: debug
+        constraint: cpu
+        exclusive: true
+        walltime: "0:30:00"
+        account: m1727
+        provider_options:
+          init_blocks: 1
+          min_blocks: 0
+          max_blocks: 1
+        worker_options: "--cores=256"
+        monitorEnable: true
+        monitorFilename: runinfo/monitoring.db
+
+payload:
+  payloadName: dp1-v3/edfs_anacal2
+  butlerConfig: /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml
+  inCollection: u/pecom/dp1/coadds,refcats/DM-39298/gaia_dr3_20230707
+  dataQuery: >
+    (skymap='lsst_cells_v1')
+    AND (band in ('u','g','r','i','z','y'))
+    AND (
+      (tract=2234 AND patch in (82,83,84,85,86,91,92,93,94,95,96))
+      OR (tract=2393 AND patch in (20))
+      OR (tract=2394 AND patch in (3,4,5,6,7,8,12,13,14,15,16,17,18,22,23,24,25,26,27,28,32,33,34,35,36,37,38,42,43,44,45,46,47,53,54,55,56,57,65,66))
+    )

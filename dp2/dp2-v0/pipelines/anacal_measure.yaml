@@ -1,0 +1,84 @@
+description: >
+  AnaCal MEASUREMENT only on DP2 cell coadds: detection and forced
+  measurement. The systematics (mask, stacked PSFs, GAIA) are read
+  from an existing collection rather than rebuilt -- pass it in the
+  bps inCollection, e.g. u/xiangchl/anacal-v0/systematics.
+
+  Based on the DP1 run u/xiangchl/dp1-v3/edfs_anacal2, with
+  sigma_arcsec = 0.48 and sigma_shapelets1 = 0.60.
+
+  Input naming in dp2: the cell coadd is `deep_coadd` -- there is no
+  dataset type with "cell" in its NAME, but deep_coadd's storage class
+  is CellCoadd (lsst.images.cells), so it is cell based. xlens reads
+  that class NATIVELY; only the connection NAME is overridden here.
+
+  It used to declare the older MultipleCellCoadd and let butler's
+  converter bridge the two. That converter rejects any patch whose
+  bounding box does not land on the cell grid, which silently skipped
+  322 of 81571 patches (0.4%) as NoWorkFound. Reading CellCoadd
+  directly removes that failure mode; on the 8 patches tested both
+  ways the catalogs are bit-identical.
+
+  The DP1 config CANNOT be reused verbatim: xlens has since dropped
+  anacal.{p_min, omega_p, validate_psf, badMaskPlanes} and
+  fpfs.{bound, sigma_shapelets, snr_min, r2_min, pthres, badMaskPlanes}.
+  Only fields in the current schema appear below -- `pipetask build`
+  does not catch stale ones, but `pipetask qgraph` does.
+
+  The two tasks chain by dataset name rather than an explicit edge:
+  buildCellSystematics writes deep_coadd_cell_systematics_mask_rle,
+  which is what measureCellCoadds reads as `mask`
+  ({inputName}_systematics_mask_rle, inputName = deep_coadd_cell).
+
+tasks:
+
+  measureCellCoadds:
+    class: xlens.processor.measure_cell_coadds.MeasureCellCoaddsPipe
+    config:
+      survey: "lsst"
+      # `bands` must equal the set the butler delivers for the patch or
+      # the task raises; detection_bands must be a subset of it.
+      # see buildCellSystematics above
+      bands: ["r", "i", "z"]
+      connections.cellCoadd: "deep_coadd"
+      # r,i,z detection matches the HSC PDR3 analysis
+      detection_bands: ["r", "i", "z"]
+
+      anacal.npix: 64
+      anacal.bound: 5
+      anacal.sigma_arcsec: 0.48
+      anacal.snr_min: 5.0
+      anacal.num_epochs: 0
+      anacal.force_size: true
+      anacal.force_center: true
+      anacal.do_noise_bias_correction: true
+      anacal.do_fpfs: true
+      # cell coadds carry a PSF per CELL; "patch" is the
+      # non-cell path's setting
+      anacal.psf_model_type: "cell"
+
+      fpfs.npix: 64
+      fpfs.c0: 30.0
+      # Paired with sigma_arcsec = 0.48. NOT the 0.5*sqrt(2) ratio the
+      # HSC run used -- 0.60/0.48 = 1.25 vs sqrt(2) = 1.414. A narrower
+      # shapelet weight raises the shear response (0.65 already gave
+      # +49% on tract 9700 patch 10), which rescales the calibration,
+      # so this needs validating against known-shear sims.
+      # The default is -1.0, which fails validation when fpfs runs.
+      fpfs.sigma_shapelets1: 0.60
+      fpfs.sigma_shapelets2: -1.0
+      fpfs.kmax_thres: 1.0e-12
+      fpfs.do_noise_bias_correction: true
+      fpfs.psf_model_type: "cell"
+
+      # per-source PSF HSM moments: the shear diagnostics need them for
+      # the psf_e1 / psf_e2 / psf_fwhm bins
+      # 4 worker THREADS over the per-cell loops. AnaCal releases the
+      # GIL around its C++, so these scale; keep pipetask -j x this
+      # product at or below the cores on the node.
+      num_workers: 4
+
+      doPsfHsmMoments: true
+      do_measure_flux_gauss: true
+      # keep every row here; the selection is applied downstream
+      n_mask_base_max: 1.0

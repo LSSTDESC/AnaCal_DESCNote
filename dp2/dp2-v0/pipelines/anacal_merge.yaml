@@ -1,0 +1,28 @@
+description: >
+  Merge the per-patch AnaCal catalogs into one catalog per tract:
+  band-combined FPFS moments plus the local WCS distortion correction.
+
+  Band weights are FIXED, carried over from the HSC PDR3 analysis
+  (median S/N^2 over the survey): r 0.2735, i 0.5373, z 0.1892. Those
+  are the HSC numbers unchanged -- its g and y weights were 0, so the
+  r,i,z values already sum to 1 and need no renormalisation.
+
+  Fixed rather than derived on purpose: a weight built from the data
+  carries a shear dependence the response does not account for, and a
+  per-tract weight makes the estimator differ from tract to tract.
+
+  NOTE the weights were measured on HSC imaging. DP2 has a different
+  depth and seeing (PSF FWHM ~1.15" here vs ~0.7" for HSC), so these
+  are a starting point, not a validated optimum for DP2 -- rederiving
+  them from the DP2 median S/N^2 is a separate exercise.
+
+tasks:
+  mergePatches:
+    class: xlens.processor.merge.MergePipe
+    config:
+      # survey-prefixed, matching the measurement's survey = "lsst"
+      bands: ["lsst_r", "lsst_i", "lsst_z"]
+      band_weights: [0.2735, 0.5373, 0.1892]
+      fpfs_prefix: "fpfs1_"
+      # real data: the local WCS distortion correction applies
+      do_wcs_correction: true

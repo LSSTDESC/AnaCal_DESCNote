@@ -1,0 +1,62 @@
+description: >
+  Per-tract shear diagnostics on the merged AnaCal catalogs: mean shear
+  binned by object and PSF properties, plus the 1-D and 2-D sanity
+  histograms. Raw SUMS per bin, never ratios, so tracts stack by plain
+  addition and the errors bootstrap over tracts afterwards.
+
+  Selection = the HSC basic cuts, unchanged:
+
+    i mag_gauss2 < 24, i s2n_fpfs1 > 10, |e| < 0.4 (esq < 0.16),
+    n_mask_base < 0.035, trace = (m00 + m20)/m00 > 0.15
+
+  Two of those are TIGHTER than HSC's: the magnitude limit is 24
+  rather than 25 and the resolution floor 0.15 rather than 0.1. DP2's
+  seeing is ~1.1" against HSC's ~0.7", so at fixed trace a DP2 source
+  is intrinsically larger, and the faint end is closer to the noise.
+
+  The |e| cut is on the RAW shape, `esq = fpfs1_e1^2 + fpfs1_e2^2`
+  written by the merge -- NOT on |wsel * e|. Cutting on the weighted
+  shape would select on the weight, which carries its own shear
+  response (dwsel/dg), and bias the estimator.
+
+  Two departures from HSC, both forced by DP2:
+
+  - `survey: lsst`. The columns are lsst_i_mag_gauss2 etc.; the binning
+    registries carry a SURVEY_ placeholder that this binds.
+  - `psf_fwhm_max: 0` (disabled). HSC cut i-band seeing at 0.8"; DP2's
+    median i FWHM is 1.10" (p1-p99 = 1.00-1.23), so that cut would
+    empty the sample. There is no equivalent seeing cut here yet.
+
+  Bin RANGES come from bin_ranges.fits rather than the registry, which
+  holds HSC numbers: DP2 sits entirely outside several of them (PSF
+  FWHM, flux errors ~3x larger). Measured once by scripts/
+  compute_bin_ranges.py over 20 sampled tracts at the 2-98 percentiles;
+  every tract must bin identically for the sums to add.
+
+  Bands: only r, i, z exist here, so the g and y properties and
+  histograms are skipped with a warning, as are the n_inputs ones --
+  DP2 carries no nImage column.
+
+tasks:
+
+  shearStats:
+    class: xlens.analysis.shear_diagnostics.ShearStatsPipe
+    config:
+      # the merge writes deep_coadd_cell_anacal_merged, not the
+      # deep_coadd_anacal_merged of the connection default
+      connections.inputName: "deep_coadd_cell"
+
+      survey: "lsst"
+      pixel_scale: 0.2
+
+      # basic selection (HSC cluster-test cuts, tightened in mag and
+      # trace -- see the description)
+      mag_max: 24.0
+      snr_min: 10.0
+      esq_max: 0.16
+      n_mask_base_max: 0.035
+      trace_min: 0.15
+      psf_fwhm_max: 0.0
+
+      bin_percentile_trim: 2.0
+      bin_ranges_file: "/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/diagnostics/bin_ranges.fits"

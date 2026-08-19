@@ -1,0 +1,1 @@
+process_worker_pool.py   -a 128.55.64.14 -p 0 -c 1.0 -m None --poll 10 --port=54572 --cert_dir None --logdir=/global/cfs/cdirs/desc-wl/projects/anacal/DP2/pipelines/runinfo/002/slurm --block_id=0 --hb_period=30  --hb_threshold=120 --drain_period=None --cpu-affinity none  --mpi-launcher=mpiexec --available-accelerators 

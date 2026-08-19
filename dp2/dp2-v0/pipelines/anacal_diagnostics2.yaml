@@ -1,0 +1,65 @@
+description: >
+  Per-tract shear diagnostics, TIGHTENED selection (v2). Same task and
+  same outputs as anacal_diagnostics.yaml; only the source selection
+  differs, so the two runs are directly comparable bin for bin.
+
+  On top of the v1 cuts (i mag < 24, i s2n > 10, |e| < 0.4,
+  n_mask_base < 0.035, trace > 0.15) this adds:
+
+    |r - i| < 1.3, |i - z| < 1.0
+        colour window. flux_to_mag saturates at 40 for a non-detection
+        or a negative flux, so blends and deblending failures land at
+        extreme colours; absolute value because a wildly negative
+        colour is as unphysical as a wildly positive one.
+
+    |PSF e1| < 0.06, |PSF e2| < 0.06, in r, i and z
+        drops the extreme-ellipticity tail of the PSF, where the model
+        is least trustworthy and leakage into the galaxy shape is
+        largest. Both components get the same window, which matches
+        their measured spans: the 2-98 percentiles are e1
+        -0.047..0.064 and e2 -0.065..0.075 in r. The cut must hold in
+        ALL THREE bands, so it bites harder than a single-band 0.06
+        would.
+
+    flux_gauss2_err < 200 (r), < 400 (i), < 600 (z)
+        the coadd noise variance has a wide dynamical range across the
+        survey; this trims the shallow tail. Measured medians are
+        r 152, i 166, z 268 nJy, with 99th percentiles at 322 / 257 /
+        418, so these limits sit above the bulk in every band.
+
+  This is a DEPTH and SEEING selection, not a galaxy selection: both
+  flux_gauss2_err and the PSF moments are properties of the imaging at
+  the source position, so cutting on them selects where on the sky the
+  sample comes from. That is deliberate here -- the point is to see
+  whether the residual <gamma_2> offset survives it.
+
+  Bin ranges are re-measured for THIS selection
+  (diagnostics2/bin_ranges.fits): the ranges are percentiles of the
+  selected sample, so they move whenever the cuts move.
+
+tasks:
+
+  shearStats:
+    class: xlens.analysis.shear_diagnostics.ShearStatsPipe
+    config:
+      connections.inputName: "deep_coadd_cell"
+
+      survey: "lsst"
+      pixel_scale: 0.2
+
+      # v1 basic selection
+      mag_max: 24.0
+      snr_min: 10.0
+      esq_max: 0.16
+      n_mask_base_max: 0.035
+      trace_min: 0.15
+      psf_fwhm_max: 0.0
+
+      # v2 additions
+      color_abs_max: {"r-i": 1.3, "i-z": 1.0}
+      psf_e1_abs_max_bands: {"r": 0.06, "i": 0.06, "z": 0.06}
+      psf_e2_abs_max_bands: {"r": 0.06, "i": 0.06, "z": 0.06}
+      flux_err_max_bands: {"r": 200.0, "i": 400.0, "z": 600.0}
+
+      bin_percentile_trim: 2.0
+      bin_ranges_file: "/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/diagnostics2/bin_ranges.fits"

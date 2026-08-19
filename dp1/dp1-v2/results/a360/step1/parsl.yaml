@@ -1,0 +1,64 @@
+LSST_VERSION: v30.0.4.rc1
+instrumnet: LSSTComCam
+
+pipelineYaml: "/global/u2/x/xiangchl/superonion/code/AnaCal_DESCNote/notebooks/cell_comcam/configs/measure_pipeline_4bands.yaml#photoZ"
+wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
+computeSite: work_queue
+
+pipetask:
+  cmdlineArgs: ["--register-dataset-types"]
+
+site:
+    local:
+        class: lsst.ctrl.bps.parsl.sites.Local
+        cores: 1
+        monitorEnable: true
+        monitorFilename: runinfo/monitoring.db
+    work_queue:
+        # Debug qos by default: 1 node × 256 cores, 30-min walltime,
+        # near-zero slurm queue wait. All three fields fit in this
+        # envelope:
+        #
+        #   a360  (88 patches, 4-band): ~9 min wall, ~0.15 node-hr
+        #   edfs  (52 patches, 6-band): ~10 min wall, ~0.17 node-hr
+        #   ecdfs (70 patches, 6-band): ~12 min wall expected
+        #
+        # Caveat: with 256-way concurrency on 1 node, ~50+ python
+        # workers hit cvmfs simultaneously at startup. If the
+        # compute node's cvmfs cache is cold (no recent LSST jobs
+        # ran on it), the FUSE daemon serialises and workers wedge
+        # on . Fixes when that happens:
+        # cancel + resubmit (different node, usually warm) OR fall
+        # back to the 2-node / regular-qos block commented below.
+        class: bps_parsl_sites.SlurmWorkQueue
+        nodes_per_block: 1
+        cores_per_node: 256
+        qos: debug
+        constraint: cpu
+        exclusive: true
+        walltime: "0:30:00"
+        # --- regular-qos fallback (uncomment if debug wedges on
+        #     cvmfs FUSE):
+        # nodes_per_block: 2
+        # qos: regular
+        # walltime: "2:00:00"
+        account: m1727
+        provider_options:
+          init_blocks: 1
+          min_blocks: 0
+          max_blocks: 1
+        worker_options: "--cores=256"
+        monitorEnable: true
+        monitorFilename: runinfo/monitoring.db
+
+payload:
+  payloadName: dp1-v2/a360_anacal2
+  butlerConfig: /global/cfs/cdirs/lsst/production/gen3/rubin/DP1/repo/butler.yaml
+  inCollection: u/pecom/dp1/coadds,refcats/DM-39298/gaia_dr3_20230707
+  dataQuery: >
+    (skymap='lsst_cells_v1')
+    AND (band in ('g','r','i','z'))
+    AND (
+      (tract=10463 AND patch in (20,21,22,23,24,25,26,30,31,32,33,34,35,36,40,41,42,43,44,45,46,50,51,52,53,54,55,56,60,61,62,63,64,65,66,70,71,72,73,74,75,76,80,81,82,83,84,85,86,90,91,92,93,94,95,96))
+      OR (tract=10464 AND patch in (26,27,28,29,36,37,38,39,46,47,48,49,56,57,58,59,66,67,68,69,76,77,78,79,86,87,88,89,96,97,98,99))
+    )

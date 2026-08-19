@@ -1,0 +1,38 @@
+description: >
+  DP2 cell-coadd systematics ONLY: the per-patch anacal bitmask
+  (bit 0 masked/cut, bit 1 INEXACT_PSF discontinuity), the stacked
+  per-cell PSFs and the GAIA bright-star catalogue. No detection, no
+  measurement -- measureCellCoadds is deliberately absent so this can
+  be submitted, checked and reused on its own.
+
+  Noise correlation is OFF: MeasureCellCoaddsPipe has no noiseCorr
+  input (cell coadds carry their own noise realisations), so pass 2 --
+  which re-stitches every band purely to compute it -- is pure cost
+  here. Verified: catalogs are bit-identical with it on and off.
+  The product is still written, as zeros.
+
+tasks:
+  buildCellSystematics:
+    class: xlens.processor.build_cell_systematics.BuildCellSystematicsTask
+    config:
+      bands: ["r", "i", "z"]
+      connections.cellCoadd: "deep_coadd"
+      do_noise_corr_estimation: false
+      npix: 49
+      gaiaPadding: 300
+      starMaskType: "default"
+      starMaskMagMax: 18.0
+      # HSC PDR3 used this list without CLIPPED or REJECTED; both are
+      # added for DP2 -- REJECTED is the plane DP2 cell coadds use for
+      # outlier rejection and it is what flags the interpolation
+      # streaks. NOTE it makes bit 1 a subset of bit 0 (every
+      # INEXACT_PSF pixel is also REJECTED), which changes the
+      # "stamp but never cut" meaning of the discontinuity mask.
+      badMaskPlanes: ["BAD", "SAT", "CR", "NO_DATA", "UNMASKEDNAN",
+                      "CROSSTALK", "INTRP", "STREAK", "VIGNETTED",
+                      "CLIPPED", "REJECTED"]
+      discontinuityMaskPlanes: ["INEXACT_PSF"]
+      discontinuityMaskBands: ["r", "i", "z"]
+      gaiaLoader.pixelMargin: 250
+      gaiaLoader.anyFilterMapsToThis: "phot_g_mean"
+      gaiaLoader.requireProperMotion: false
