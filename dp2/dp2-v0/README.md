@@ -1,5 +1,7 @@
 # DP2 AnaCal shear catalog — v0
 
+> ⚠ **[Known problems](KNOWN_PROBLEMS.md)** — read before using v0: bright-star masking, the RA≈0 gap, PSF-moment units, calibration.
+
 anacal/fpfs shear measurement on the LSST DP2 `deep_coadd` cell coadds, r/i/z,
 run through the same xlens pipeline as HSC PDR3. Repo `dp2`, skymap
 `lsst_cells_v2`, 820 tracts with `|b_gal| > 15`.
