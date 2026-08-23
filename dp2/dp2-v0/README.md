@@ -45,6 +45,13 @@ Per-band shapes, the raw detection-band `fpfs_*` columns and the
 per-band `fpfs1_m00`/`m20` are dropped by the merge — they exist only in
 the per-patch `measure` catalogs.
 
+## Footprint
+
+Galaxy number density over the DP2 shear footprint (whole merged
+catalog, before the diagnostics2 selection).
+
+![galaxy number density](./figures2/ngal_all.png)
+
 ## Per-object shear
 
 ```python
