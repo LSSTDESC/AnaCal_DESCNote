@@ -136,5 +136,5 @@ panels after these cuts; PSF e2 (i) remains at p = 0.05.
 Randomly selected massive low-z cluster to confirm we can get positive
 tangential shear
 
-![$\gamma$](./figures2/figures2/cluster_shear_gamma.png)
-![$\theta \gamma$](./figures2/figures2/cluster_shear_gamma.png)
+![$\gamma$](./figures2/cluster_shear_gamma.png)
+![$\theta \gamma$](./figures2/cluster_shear_gamma.png)
