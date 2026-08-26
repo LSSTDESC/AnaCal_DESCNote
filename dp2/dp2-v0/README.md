@@ -147,3 +147,8 @@ tangential shear
 
 ![$\gamma$](./figures2/cluster_shear_gamma.png)
 ![$\theta \gamma$](./figures2/cluster_shear.png)
+
+
+## Additional known problem — Galactic extinction
+
+The v0 merged catalog's anacal `gauss2` fluxes and magnitudes are NOT dereddened for Galactic dust extinction. Users must apply a dereddening correction (for example using SFD or Planck dust maps) before using `gauss2` flux or magnitude for colour measurements, photometric redshifts, or any analysis sensitive to extinction.
