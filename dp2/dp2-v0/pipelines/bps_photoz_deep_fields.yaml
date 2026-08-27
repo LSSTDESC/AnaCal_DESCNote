@@ -1,0 +1,50 @@
+# BPS submission: FlexZBoost photo-z over the DEEP-field anacal catalogs
+# (EDFS, ECDFS, COSMOS -- 43 tracts).
+#
+#   source ~/setup/setup_lsst_dp2.bash
+#   cd /global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines
+#   nohup bps submit bps_photoz_deep_fields.yaml > ../../scripts/logs/bps_photoz_deep_fields.log 2>&1 &
+#
+# Same pipeline and model as the wide run; only the input/output
+# collections differ. Reads the per-patch anacal catalogs from the
+# deep-field measure collection and runs photoZPipe: point estimates for
+# all 5 versions (0,1p,1m,2p,2m) and the UNDISTORTED p(z) grid only.
+#
+# ~3,460 patches; ~20-25 s single core each, ~25 core-hr total. The
+# measure_deep_fields collection already holds exactly the deep-field
+# patches, so no tract filter is needed.
+
+pipelineYaml: "/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines/anacal_photoz.yaml"
+
+payload:
+  payloadName: dp2_anacal_photoz_deep_fields
+  butlerConfig: dp2
+  inCollection: "u/xiangchl/anacal-v0/measure_deep_fields"
+  output: "u/xiangchl/anacal-v0/photoz_deep_fields"
+  dataQuery: "skymap = 'lsst_cells_v2'"
+
+numberOfRetries: 2
+requestMemory: 4000
+
+wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
+computeSite: perlmutter
+
+parsl:
+  log_level: WARN
+
+site:
+  perlmutter:
+    class: lsst.ctrl.bps.parsl.sites.Slurm
+    nodes: 1
+    # single-threaded per patch; 128 concurrent quanta on one node
+    # clears ~3,460 patches in ~10-15 min.
+    cores_per_node: 128
+    walltime: "00:30:00"
+    qos: regular
+    constraint: cpu
+    account: m1727
+    exclusive: true
+    commandPrefix: "source /global/u2/x/xiangchl/setup/setup_lsst_dp2.bash; export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 XGBOOST_NTHREADS=1;"
+    scheduler_options: |
+      #SBATCH --module=cvmfs
+    monitorEnable: false

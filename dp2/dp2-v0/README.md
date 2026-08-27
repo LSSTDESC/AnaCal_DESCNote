@@ -11,6 +11,8 @@ run through the same xlens pipeline as HSC PDR3. Repo `dp2`, skymap
 | systematics | `u/xiangchl/anacal-v0/systematics` | 81,573 patches (mask, GAIA catalog) |
 | measurement | `u/xiangchl/anacal-v0/measure` | 81,249 patch catalogs |
 | merge | `u/xiangchl/anacal-v0/merge` | 820 tract catalogs, **146.34 M objects**, 144 columns, 129 GB |
+| photo-z | `u/xiangchl/anacal-v0/photoz` | 81,249 patch (point estimates + p(z)) — FlexZBoost, riz gauss2 |
+| merge+z | `u/xiangchl/anacal-v0/merge_withz` | 820 tracts × (shape, redshift table, p(z) qp.Ensemble) |
 | diagnostics | `u/xiangchl/anacal-v0/diagnostics` | 820 × (meanshear, hist), basic cuts |
 | diagnostics2 | `u/xiangchl/anacal-v0/diagnostics2` | 820 × (meanshear, hist), full cuts — the figures below |
 
@@ -18,7 +20,7 @@ Pipelines in `pipelines/`. Band weights are FIXED survey-wide (r 0.2735, i
 0.5373, z 0.1892 — the HSC values (need to update)); detection is the r,i,z
 coadd with anacal's own per-cell inverse-variance weights.
 
-## Merged catalog columns
+## Shape Catalog
 
 One row per primary detection, already filtered by `is_primary` and
 `wsel > 1e-5`. `<b>` is `lsst_r`, `lsst_i`, `lsst_z`.
@@ -44,6 +46,44 @@ One row per primary detection, already filtered by `is_primary` and
 Per-band shapes, the raw detection-band `fpfs_*` columns and the
 per-band `fpfs1_m00`/`m20` are dropped by the merge — they exist only in
 the per-patch `measure` catalogs.
+
+**Cost.** The wide measurement (81,249 patches — r/i/z detection + forced
+FPFS on the cell coadds) is the heavy stage: **~70 node-hours** (16 nodes ×
+~4.4 h). The per-tract merge is cheap by comparison (~5 CPU-hours, a few
+minutes on one node).
+
+## Photo-z Catalog (FlexZBoost)
+
+Per-object p(z) from a FlexZBoost model (DESC RAIL), trained on riz `gauss2`
+magnitudes (the `anacal_riz_gauss2` catalog tag), z ∈ [0, 6] on 601 bins.
+Run per patch (`xlens.processor.photoz.photoZPipe`), then combined per tract
+by the merge with `do_flexzboost=true`. Each object is estimated for the
+undistorted catalog **and** the four shear distortions (`1p, 1m, 2p, 2m`), so
+the point estimates carry a full shear response.
+
+`u/xiangchl/anacal-v0/merge_withz` — three per-tract products, all row-aligned
+by `object_id`:
+
+| dataset | storage | contents |
+|---|---|---|
+| `<b>_anacal_merged` | ArrowAstropy | the shape catalog (identical to `merge`; photo-z **not** joined in) |
+| `<b>_anacal_flexzboost_redshift` | ArrowAstropy | `zmode/zbest/z025/z160/z500/z840/z975` × `_0/_1p/_1m/_2p/_2m` |
+| `<b>_anacal_flexzboost_pdfs` | QPEnsemble | p(z) on the [0,6]/601 grid; `object_id` in the ensemble ancil |
+
+`<b>` = `deep_coadd_cell`. Read the PDFs with `qp.read(path)` (or `butler.get`,
+storage class `QPEnsemble`) and join back to the shape/redshift tables by
+`object_id`. The deep fields carry the same three products in
+`u/xiangchl/anacal-v0/merge_withz_deep_fields`.
+
+Model: `.../DP2-v0/rail/projects/dp2_anacal/data/gold_dp2_anacal_v0/model_inform_fzboost.pkl`;
+rail-project config in `.../DP2-v0/rail/config` (rail 2.0, self-contained, no
+`rail_astro_tools` clone needed).
+
+**Cost.** One full wide photo-z run is **~10 node-hours** (2 nodes × ~4.7 h;
+81,249 single-threaded patch quanta, where the LSST-stack startup + 70 MB
+model load per quantum dominate, not the FlexZBoost compute). The per-tract
+merge+z adds ~0.7 node-hours (820 tracts, 4 nodes × ~10 min); the deep fields
+are ~0.4 node-hours for photo-z plus a few minutes to merge.
 
 ## Footprint
 

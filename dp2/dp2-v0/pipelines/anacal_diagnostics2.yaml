@@ -45,7 +45,6 @@ tasks:
       connections.inputName: "deep_coadd_cell"
 
       survey: "lsst"
-      pixel_scale: 0.2
 
       # v1 basic selection
       mag_max: 24.0

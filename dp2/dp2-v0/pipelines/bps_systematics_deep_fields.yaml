@@ -1,0 +1,74 @@
+# BPS submission: DP2 cell-coadd SYSTEMATICS ONLY.
+#
+#   source ~/setup/setup_lsst_dp2.bash
+#   cd /global/cfs/cdirs/desc-wl/projects/anacal/DP2/pipelines
+#   nohup bps submit bps_systematics.yaml > ../scripts/logs/bps_syst.log 2>&1 &
+#
+# `bps submit` is the workflow manager and must stay alive for the whole
+# run -- use nohup or tmux, not a shell you will close.
+#
+# Scope: the 43 DEEP FIELD tracts -- ECDFS (13), COSMOS (10), EDFS (20).
+# These are disjoint from the 820 |gal_b|>15 tracts, so no systematics
+# existed for them in any collection before this run; measure would have
+# produced UNMASKED catalogs silently, because the mask connection in
+# measure_cell_coadds carries minimum=0.
+#
+# Sizing, from measurement rather than guesswork:
+#   buildCellSystematics, riz, noise corr OFF : 9.3 s per patch
+#     (9.07-9.84 over 6 patches; it was 50.5 s with the noise
+#      correlation pass, which is why that is disabled here)
+#   81573 x 9.3 s                             = 211 CPU-hours
+#   8 nodes x 64 workers = 512 concurrent     ~ 25 min of execution
+#   QuantumGraph build                        ~ 5 min (17 s for 5000
+#     quanta, 490 MB; expect ~8 GB at full size)
+#   plus per-node cold cvmfs start and the final registration of
+#   ~326k datasets (4 products x 81573 patches), which is the least
+#   predictable part -- hence the 2 h walltime for a ~45-60 min job.
+
+pipelineYaml: "/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines/anacal_systematics.yaml"
+
+payload:
+  payloadName: dp2_anacal_systematics_deep_fields
+  butlerConfig: dp2
+  # The gaia refcat is a STANDALONE RUN -- it is NOT a child of the
+  # `dp2` chain, so it has to be listed explicitly. Leaving it out
+  # does not fail loudly: buildCellSystematics declares gaia as a
+  # PrerequisiteInput, and the 20260818T074919Z run silently wrote
+  # 81573 EMPTY gaia tables with zero bright-star masking (median 31%
+  # of each patch left unmasked, up to 73% at |gal_b| ~ 16). Note the
+  # lowercase `dm-39298`.
+  inCollection: "dp2,refcats/dm-39298/gaia_dr3_20230707"
+  output: "u/xiangchl/anacal-v0/systematics_deep_fields"
+  dataQuery: "skymap = 'lsst_cells_v2' AND tract IN (2078,2079,2080,2233,2234,2235,2236,2237,2393,2394,2395,2396,2397,2558,2559,2560,2561,2562,2729,2730,4636,4637,4638,4847,4848,4849,4850,5062,5063,5064,5279,5280,5281,9569,9570,9571,9572,9812,9813,9814,10054,10055,10056) AND band IN ('r','i','z')"
+
+numberOfRetries: 2
+requestMemory: 8000
+
+wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
+computeSite: perlmutter
+
+parsl:
+  log_level: WARN
+
+site:
+  perlmutter:
+    class: lsst.ctrl.bps.parsl.sites.Slurm
+    nodes: 2
+    # buildCellSystematics is SINGLE-THREADED (it has no num_workers
+    # field), so workers map 1:1 onto cores. 64 of 128 leaves headroom
+    # for the per-worker stitching buffers rather than chasing the last
+    # factor of two.
+    cores_per_node: 32
+    walltime: "02:00:00"
+    qos: regular
+    constraint: cpu
+    account: m1727
+    exclusive: true
+    # Compute nodes have neither the stack nor xlens/anacal; sourcing
+    # the setup script supplies both (it puts them on PYTHONPATH).
+    # NOT `environment: true` -- ctrl_bps core reads that key as a
+    # mapping and dies with "'bool' object is not iterable".
+    commandPrefix: "source /global/u2/x/xiangchl/setup/setup_lsst_dp2.bash; export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1;"
+    scheduler_options: |
+      #SBATCH --module=cvmfs
+    monitorEnable: false

@@ -1,0 +1,86 @@
+# Photo-z for the Rubin DP2 anacal shear catalog.
+#
+# Self-contained on rail 2.0.  No environment variables to set, no
+# rail_astro_tools clone: the Include and CatalogLib paths below are absolute.
+#
+#   D=/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/rail/config
+#   rail-project inspect  $D/dp2_anacal.yml
+#   rail-project build --flavor dp2_anacal_v0 $D/dp2_anacal.yml --force
+#   rail-project run pz --flavor dp2_anacal_v0 --selection gold $D/dp2_anacal.yml
+#
+# The riz/gauss2 catalog tag is loaded from dp2_catalogs.yaml via the CatalogLib
+# entry below -- rail 2.0 reads it as data, so NO dp2_catalog_tags.py import
+# (and no PYTHONPATH clone) is required.
+#
+# NOTE: if you move this directory, update the two absolute paths below.
+#
+# v0 is deliberately minimal: one flavor, FlexZBoost only, three bands.
+
+Project:
+
+  Name: dp2_anacal
+
+  Includes:
+    - '/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/rail/config/dp2_anacal_library.yaml'
+
+  # rail 2.0 loads each entry with catalog_utils.load_yaml, registering the
+  # anacal riz/gauss2 tag from data -- no dp2_catalog_tags.py import needed.
+  CatalogLib:
+    - '/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/rail/config/dp2_catalogs.yaml'
+
+  PathTemplates: {}
+
+  # These are used to make all the other paths
+  CommonPaths:
+    parent: dp2
+    project: dp2_anacal
+    root: '/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/rail'
+    scratch_root: "{root}"
+    catalogs_dir: "{root}/data"
+
+  # Nothing is iterated over yet -- v0 runs on the single curated train/test pair rather than
+  # per tract.  Applying the trained model over the full shear catalog (roadmap task 4) is
+  # where a `tract` list will go, and it belongs HERE, under Project: rail-1.2 rejects
+  # `IterationVars` at the document root of a library file.
+  IterationVars: {}
+
+  Baseline:
+    # Registry name of the tag defined in dp2_catalogs.yaml and loaded via CatalogLib.
+    catalog_tag: anacal_riz_gauss2
+    pipelines: ['all']
+    file_aliases:  # Set the training and test files
+      test: test_file_anacal_v0
+      train: train_file_anacal_v0
+      # Not an alias any pipeline uses by default -- it is only reachable through
+      # `--input-tag full`, which substitutes it for whatever a pipeline's declared input
+      # tag is.  That is the whole 153 M-object shear catalog; see the FileTemplate.
+      full: full_file_anacal_v0
+    pipeline_overrides:
+      default:
+        kwargs:
+          algorithms: ['fzboost']
+
+  Flavors:
+
+    - Flavor:
+        name: dp2_anacal_v0
+        catalog_tag: anacal_riz_gauss2
+        pipeline_overrides:
+          default:
+            kwargs:
+              algorithms: ['fzboost']
+          pz:
+            inform_fzboost:
+              max_basis: 50
+              nsharp: 1
+              nbump: 1
+              bumpmin: 0.02
+              bumpmax: 0.02
+              sharpmin: 1.2
+              sharpmax: 1.2
+            estimate_fzboost:
+              calculated_point_estimates: ['zmode', 'zbest']
+          estimate:
+            estimate_fzboost:
+              calculated_point_estimates: ['zmode', 'zbest']
+              nprocess: 128

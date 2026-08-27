@@ -1,0 +1,53 @@
+# BPS submission: FlexZBoost photo-z over the WIDE-field anacal catalogs.
+#
+#   source ~/setup/setup_lsst_dp2.bash
+#   cd /global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines
+#   nohup bps submit bps_photoz.yaml > ../../scripts/logs/bps_photoz.log 2>&1 &
+#
+# Reads the per-patch anacal catalogs from the measure collection and runs
+# photoZPipe: point estimates for all 5 versions (0,1p,1m,2p,2m) and the
+# UNDISTORTED p(z) grid only (output_distorted_pdfs=false in the pipeline).
+#
+# ~81,249 patches; each ~20-25 s single core (incl. 70 MB model load per
+# quantum), ~560 core-hr total. No tract filter is needed -- the measure
+# collection already holds exactly the wide-field patches, and the anacal
+# catalog has no band dimension.
+
+pipelineYaml: "/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines/anacal_photoz.yaml"
+
+payload:
+  payloadName: dp2_anacal_photoz
+  butlerConfig: dp2
+  inCollection: "u/xiangchl/anacal-v0/measure"
+  output: "u/xiangchl/anacal-v0/photoz"
+  dataQuery: "skymap = 'lsst_cells_v2'"
+
+numberOfRetries: 2
+requestMemory: 4000
+
+wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
+computeSite: perlmutter
+
+parsl:
+  log_level: WARN
+
+site:
+  perlmutter:
+    class: lsst.ctrl.bps.parsl.sites.Slurm
+    nodes: 2
+    # photoZPipe is single-threaded per patch (flexcode / xgboost nthreads=1),
+    # so pack one task per physical core: 128 concurrent quanta per node.
+    # 2 nodes x 128 = 256 slots. Per-quantum wall is dominated by LSST-stack
+    # startup + 70 MB model load (~40-60 s each), so 81k quanta take ~3.5-4 h;
+    # an 8 h walltime clears the whole run in a single allocation (no block
+    # boundary requeue). Bump cores_per_node to 256 to use logical cpus.
+    cores_per_node: 128
+    walltime: "08:00:00"
+    qos: regular
+    constraint: cpu
+    account: m1727
+    exclusive: true
+    commandPrefix: "source /global/u2/x/xiangchl/setup/setup_lsst_dp2.bash; export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 XGBOOST_NTHREADS=1;"
+    scheduler_options: |
+      #SBATCH --module=cvmfs
+    monitorEnable: false

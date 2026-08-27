@@ -1,0 +1,93 @@
+# Library for the DP2 anacal photo-z project (rail 2.0).
+#
+# Included by dp2_anacal.yml.  Defines the input files, the catalog-tag library
+# (CatalogLib -> dp2_catalogs.yaml), the FlexZBoost algorithm, the standard
+# inform/estimate/evaluate/pz pipelines and the `gold` selection.
+
+# Training and test files, produced by the hscfy_pz_prepare ceci pipeline
+# (rail_astro_tools/src/rail/pipelines/degradation/hscfy_pz_prepare.py) and linked into
+# {catalogs_dir} by scripts/link_anacal_train_test.sh.
+Files:
+  - FileTemplate:
+      name: train_file_anacal_v0
+      path_template: "{catalogs_dir}/train/anacal_train_v0.hdf5"
+  - FileTemplate:
+      name: test_file_anacal_v0
+      path_template: "{catalogs_dir}/test/anacal_test_v0.hdf5"
+  # The whole anacal shear catalog -- 153,059,345 objects over all 863 tracts, riz gauss2
+  # photometry only, written by scripts/pull_anacal_shear.py and linked in by
+  # scripts/link_anacal_train_test.sh.  This is what roadmap task 4 estimates over:
+  #
+  #   rail-project run estimate --flavor dp2_anacal_v0 --selection gold \
+  #       --input-tag full $RAIL_PROJECT_CONFIG_DIR/dp2_anacal.yml
+  #
+  # `--input-tag full` swaps this file in for `test` AND redirects the pipeline's outputs
+  # into a `full/` subdirectory of the usual ceci output dir, so the test-set estimate is
+  # not overwritten.
+  - FileTemplate:
+      name: full_file_anacal_v0
+      path_template: "{catalogs_dir}/full/anacal_full_v0.hdf5"
+
+# The catalog-tag library (dp2_catalogs.yaml) is loaded via the CatalogLib entry
+# under Project: in dp2_anacal.yml -- CatalogLib is a project parameter, not a
+# valid key inside an included library file.
+
+# Only FlexZBoost for v0.  The other algorithms are defined in dp2_library.yaml and can be
+# copied across when the flavor grows.
+PZAlgorithms:
+  - PZAlgorithm:
+      name: fzboost
+      Estimate: FlexZBoostEstimator
+      Inform: FlexZBoostInformer
+      Module: rail.estimation.algos.flexzboost
+
+
+Pipelines:
+  - PipelineTemplate:
+      name: inform
+      pipeline_class: rail.pipelines.estimation.inform_all.InformPipeline
+      input_file_templates:
+        input:
+          flavor: baseline
+          tag: train
+      kwargs:
+        algorithms: ['all']
+  - PipelineTemplate:
+      name: estimate
+      pipeline_class: rail.pipelines.estimation.estimate_all.EstimatePipeline
+      input_file_templates:
+        input:
+          flavor: baseline
+          tag: test
+      kwargs:
+        algorithms: ['all']
+  - PipelineTemplate:
+      name: evaluate
+      pipeline_class: rail.pipelines.evaluation.evaluate_all.EvaluationPipeline
+      input_file_templates:
+        truth:
+          flavor: baseline
+          tag: test
+      kwargs:
+        algorithms: ['all']
+  - PipelineTemplate:
+      name: pz
+      pipeline_class: rail.pipelines.estimation.pz_all.PzPipeline
+      input_file_templates:
+        input_train:
+          flavor: baseline
+          tag: train
+        input_test:
+          flavor: baseline
+          tag: test
+      kwargs:
+        algorithms: ['all']
+
+
+# `gold` is the selection namespace token that `rail-project run --selection gold` resolves.
+# The i cut matches the test set, which SOMResampler already trims to 18.5 < i < 25.
+Selections:
+  - Selection:
+      name: gold
+      cuts:
+        maglim_i: [null, 25.0]

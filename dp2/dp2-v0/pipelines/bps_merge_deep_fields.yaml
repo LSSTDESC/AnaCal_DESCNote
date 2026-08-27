@@ -1,0 +1,48 @@
+# BPS submission: merge the per-patch AnaCal catalogs into one per tract.
+#
+#   source ~/setup/setup_lsst_dp2.bash
+#   cd /global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines
+#   nohup bps submit bps_merge_deep_fields.yaml > ../../scripts/logs/bps_merge_deep.log 2>&1 &
+#
+# One quantum per TRACT (not per patch): 43 quanta for the deep
+# fields (ECDFS 13, COSMOS 10, EDFS 20).
+# Measured on tract 9700: 27 s and 1.2 GB peak for 100 patches ->
+# 134113 rows. Expect well under an hour on a single node.
+#
+# Memory is the constraint here, not cpu: each quantum holds a whole
+# tract's stacked catalog, so tasks per node stays low.
+
+pipelineYaml: "/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines/anacal_merge.yaml"
+
+payload:
+  payloadName: dp2_anacal_merge_deep_fields
+  butlerConfig: dp2
+  inCollection: "u/xiangchl/anacal-v0/measure_deep_fields,dp2"
+  output: "u/xiangchl/anacal-v0/merge_deep_fields"
+  dataQuery: "skymap = 'lsst_cells_v2' AND tract IN (2078,2079,2080,2233,2234,2235,2236,2237,2393,2394,2395,2396,2397,2558,2559,2560,2561,2562,2729,2730,4636,4637,4638,4847,4848,4849,4850,5062,5063,5064,5279,5280,5281,9569,9570,9571,9572,9812,9813,9814,10054,10055,10056)"
+
+numberOfRetries: 2
+requestMemory: 16000
+
+wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
+computeSite: perlmutter
+
+parsl:
+  log_level: WARN
+
+site:
+  perlmutter:
+    class: lsst.ctrl.bps.parsl.sites.Slurm
+    nodes: 1
+    # 32 tasks x ~1.2 GB per tract = ~40 GB per node, comfortable in
+    # 503 GB even if some tracts are heavier than 9700.
+    cores_per_node: 32
+    walltime: "01:00:00"
+    qos: regular
+    constraint: cpu
+    account: m1727
+    exclusive: true
+    commandPrefix: "source /global/u2/x/xiangchl/setup/setup_lsst_dp2.bash; export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1;"
+    scheduler_options: |
+      #SBATCH --module=cvmfs
+    monitorEnable: false

@@ -47,7 +47,6 @@ tasks:
       connections.inputName: "deep_coadd_cell"
 
       survey: "lsst"
-      pixel_scale: 0.2
 
       # basic selection (HSC cluster-test cuts, tightened in mag and
       # trace -- see the description)

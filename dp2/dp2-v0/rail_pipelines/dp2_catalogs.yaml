@@ -1,0 +1,43 @@
+# Catalog definitions for the DP2 anacal shear catalog photo-z project.
+#
+# Trimmed to the anacal riz/gauss2 tag only -- the other survey tags (lsst_gaap,
+# comcam, hsc, roman, ...) that ship in rail-base's default_catalogs.yaml are not
+# needed here and have been dropped.  rail-project clears the catalog registry
+# before loading this file (project.py: catalog_utils.clear() then load_yaml on
+# each CatalogLib entry), so only what is below is registered.
+#
+# Bands carry a name (matching the filter file) and a reddening parameter a_env.
+# Only the three lsstcam bands the anacal tag resolves via filter_template are kept.
+Bands:
+  - Band:
+      name: lsstcam_r
+      a_env: 2.70
+  - Band:
+      name: lsstcam_i
+      a_env: 2.06
+  - Band:
+      name: lsstcam_z
+      a_env: 1.58
+
+# DP2 anacal shear catalog: fixed-aperture Gaussian photometry, r/i/z only.
+# anacal stores magnitudes directly -- there is no flux column and no zeropoint.
+# The mag limits are the MEASURED 5-sigma depths of this photometry (the magnitude at
+# which median mag_gauss2_err crosses 2.5/ln(10)/5 = 0.2171 on the 872,475-object
+# reference cross-match).
+CatalogTags:
+  - CatalogTag:
+      name: "anacal_riz_gauss2"
+      mag_column_template: "lsst_{band}_mag_gauss2"
+      mag_err_column_template: "lsst_{band}_mag_gauss2_err"
+      filter_template: "lsstcam_{band}"
+      band_list: ['r', 'i', 'z']
+      zmax: 6.0
+      nzbins: 601
+      calculated_point_estimates: ['zmode', 'zbest']
+      bands:
+        r:
+          mag_limit: 26.07
+        i:
+          mag_limit: 25.62
+        z:
+          mag_limit: 24.69

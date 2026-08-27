@@ -1,0 +1,46 @@
+# BPS submission: AnaCal MEASUREMENT on DP2 cell coadds.
+#
+#   source ~/setup/setup_lsst_dp2.bash
+#   cd /global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines
+#   nohup bps submit bps_measure.yaml > ../../scripts/logs/bps_measure.log 2>&1 &
+#
+# Reads the systematics produced earlier (81573 patches over 820 tracts,
+# |gal_b| > 15) instead of rebuilding them: inCollection lists that
+# collection ahead of dp2 so the mask/PSF/GAIA products resolve.
+
+pipelineYaml: "/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/pipelines/anacal_measure.yaml"
+
+payload:
+  payloadName: dp2_anacal_measure
+  butlerConfig: dp2
+  inCollection: "u/xiangchl/anacal-v0/systematics_deep_fields,dp2"
+  output: "u/xiangchl/anacal-v0/measure_deep_fields"
+  dataQuery: "skymap = 'lsst_cells_v2' AND tract IN (2078,2079,2080,2233,2234,2235,2236,2237,2393,2394,2395,2396,2397,2558,2559,2560,2561,2562,2729,2730,4636,4637,4638,4847,4848,4849,4850,5062,5063,5064,5279,5280,5281,9569,9570,9571,9572,9812,9813,9814,10054,10055,10056) AND band IN ('r','i','z')"
+
+numberOfRetries: 2
+requestMemory: 8000
+
+wmsServiceClass: lsst.ctrl.bps.parsl.ParslService
+computeSite: perlmutter
+
+parsl:
+  log_level: WARN
+
+site:
+  perlmutter:
+    class: lsst.ctrl.bps.parsl.sites.Slurm
+    nodes: 2
+    # 64 tasks x num_workers=4 threads = 256 threads = the node's
+    # LOGICAL cpu count (128 physical cores, ThreadsPerCore=2), so this
+    # uses hyperthreading in full. If throughput disappoints, 8 nodes x
+    # 32 tasks gives the same 256 concurrency at half the per-node I/O.
+    cores_per_node: 64
+    walltime: "05:00:00"
+    qos: regular
+    constraint: cpu
+    account: m1727
+    exclusive: true
+    commandPrefix: "source /global/u2/x/xiangchl/setup/setup_lsst_dp2.bash; export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1;"
+    scheduler_options: |
+      #SBATCH --module=cvmfs
+    monitorEnable: false

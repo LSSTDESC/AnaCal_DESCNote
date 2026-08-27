@@ -1,0 +1,42 @@
+description: >
+  FlexZBoost photo-z for the DP2 anacal per-patch catalogs.
+
+  Reads the per-patch anacal catalog (deep_coadd_cell_anacal_catalog)
+  written by measureCellCoadds and runs the trained FlexZBoost model,
+  producing, per object:
+    * point estimates (zmode, z025, z160, z500, z840, z975, zbest) for
+      the undistorted catalog AND the four shear distortions
+      (1p, 1m, 2p, 2m) -- suffix _0/_1p/_1m/_2p/_2m
+      -> deep_coadd_cell_anacal_fzb_point
+    * the undistorted p(z) grid with shape (N, nzbins)
+      -> deep_coadd_cell_anacal_fzb_pdfs
+      (only the "0" version; set output_distorted_pdfs: true for all five,
+      which makes this (N, 5, nzbins))
+
+  The model and its redshift grid come from the RAIL project at
+  /global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/rail. That model was
+  trained over z in [0, 6] with 601 bins, so z_max/nzbins below MUST
+  match it -- flexcode returns the CDE on the model's own z-range, and a
+  mismatched grid mislabels the p(z) z-axis (biasing zmode/zbest by the
+  ratio of the ranges). riz gauss2 magnitudes, ref band i, matching the
+  anacal_riz_gauss2 catalog tag the model was informed with; magnitudes
+  are NOT dereddened (no extinction connected), as in training.
+
+tasks:
+  photoz:
+    class: xlens.processor.photoz.photoZPipe
+    config:
+      model_path: "/global/cfs/cdirs/desc-wl/projects/anacal/DP2/DP2-v0/rail/projects/dp2_anacal/data/gold_dp2_anacal_v0/model_inform_fzboost.pkl"
+      # survey-prefixed bands used as color features, riz only
+      bands: ["lsst_r", "lsst_i", "lsst_z"]
+      ref_band: "lsst_i"
+      flux_name: "gauss2"
+      include_mag_err: false
+      # all five versions: undistorted (0) + 1p,1m,2p,2m
+      do_distortions: true
+      # also write the p(z) grid; only the undistorted "0" version for DP2
+      output_pdfs: true
+      output_distorted_pdfs: false
+      # MUST match the trained model's z range (RAIL nzbins=601, zmax=6.0)
+      z_max: 6.0
+      nzbins: 601

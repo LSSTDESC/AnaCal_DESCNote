@@ -1,0 +1,32 @@
+description: >
+  Merge the per-patch AnaCal catalogs into one per tract AND emit the
+  FlexZBoost photo-z as two separate per-tract products.
+
+  Same shape merge as anacal_merge.yaml (band-combined FPFS moments + WCS
+  distortion correction), with do_flexzboost enabled so the task also reads
+  the per-patch photo-z point catalogs and p(z) grids and writes:
+
+    * deep_coadd_cell_anacal_merged            -- the shape catalog (measure)
+    * deep_coadd_cell_anacal_flexzboost_redshift -- point estimates (table),
+      all 5 shear versions, row-aligned to the shape catalog by object_id
+    * deep_coadd_cell_anacal_flexzboost_pdfs   -- p(z) as a qp.Ensemble
+      (interp), one PDF per surviving object, object_id carried in the
+      ensemble ancil, rows aligned to the shape catalog
+
+  The three products share one object_id ordering: the photo-z is reordered
+  onto the shape catalog and filtered to the same is_primary & wsel>1e-5 rows.
+
+  pz_zmax MUST match what photoZPipe wrote the PDFs with (z in [0,6], 601
+  bins); the grid is linspace(0, pz_zmax, nz) with nz taken from the pdf
+  width, so the qp xvals reproduce the photo-z grid exactly.
+
+tasks:
+  mergePatches:
+    class: xlens.processor.merge.MergePipe
+    config:
+      bands: ["lsst_r", "lsst_i", "lsst_z"]
+      band_weights: [0.2735, 0.5373, 0.1892]
+      fpfs_prefix: "fpfs1_"
+      do_wcs_correction: true
+      do_flexzboost: true
+      pz_zmax: 6.0
