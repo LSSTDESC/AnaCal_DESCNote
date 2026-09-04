@@ -101,3 +101,7 @@ place-of value (not header) to a new collection.
 **Future.** Record every SIZE observable in arcsec at measurement time
 so no consumer needs the pixel scale — this class of bug has already
 appeared twice (diagnostics `psf_fwhm`, HSC cluster script).
+
+## 5. Galactic extinction
+
+The v0 merged catalog's anacal fluxes and magnitudes are NOT dereddened for Galactic dust extinction. Users must apply a dereddening correction (for example using SFD or Planck dust maps) before using all flux or magnitude for colour measurements, photometric redshifts, or any analysis sensitive to extinction.
