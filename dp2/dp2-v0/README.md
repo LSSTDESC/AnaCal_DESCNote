@@ -187,3 +187,46 @@ tangential shear
 
 ![$\gamma$](./figures2/cluster_shear_gamma.png)
 ![$\theta \gamma$](./figures2/cluster_shear.png)
+
+## Diagnostics — deep fields (EDFS, ECDFS, COSMOS)
+
+The same `diagnostics2` selection on the 43 deep-field tracts
+(`merge_withz_deep_fields`), with bin ranges re-measured for the ~1 mag
+deeper sample. Raw per-tract sums stacked over the 43 tracts, bootstrapped
+over tracts. Whole deep sample under the selection: **606,443 objects**,
+⟨γ₁⟩ = −0.00059, ⟨γ₂⟩ = −0.00019, mean response 0.379.
+
+### Mean shear vs PSF
+
+Across the six PSF-ellipticity panels γ₁ gives p = 0.05–0.61 and γ₂
+p = 0.36–0.93; the tightest are PSF e2 (r) and PSF e1 (i) in γ₁
+(p = 0.05–0.06), consistent with noise over the smaller deep footprint.
+
+![mean shear vs PSF ellipticity](./figures2_deep/meanshear_psf_shape.png)
+![mean shear vs PSF FWHM](./figures2_deep/meanshear_psf_size.png)
+
+### Mean shear vs photometry
+
+![mean shear vs magnitude](./figures2_deep/meanshear_mag.png)
+![mean shear vs S/N](./figures2_deep/meanshear_snr.png)
+![mean shear vs colour](./figures2_deep/meanshear_photometry.png)
+
+### Mean shear vs depth and survey properties
+
+The deep fields carry a per-band `n_inputs` (visit count), so a coverage
+panel is available here that the wide field lacks.
+
+![mean shear vs flux error](./figures2_deep/meanshear_fluxerr.png)
+![mean shear vs mask fractions](./figures2_deep/meanshear_survey.png)
+![mean shear vs background](./figures2_deep/meanshear_bkg.png)
+![mean shear vs coverage](./figures2_deep/meanshear_coverage.png)
+
+### Mean shear vs shape and position
+
+![mean shear vs trace and |e|](./figures2_deep/meanshear_shape.png)
+![mean shear vs position](./figures2_deep/meanshear_position.png)
+
+### Distributions
+
+![1-D distributions](./figures2_deep/hist_1d.png)
+![2-D distributions](./figures2_deep/hist_2d.png)
