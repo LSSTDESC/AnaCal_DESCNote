@@ -9,6 +9,8 @@ that fixes or works around each. [← back to README](README.md)
 | 2 | Deep fields (EDFS, ECDFS, COSMOS) not processed | **done** — separate collections |
 | 3 | RA = 0 strip of the wide field missing | not fixed |
 | 4 | PSF moments stored in pixel², not arcsec² | migrated catalog available |
+| 5 | Fluxes/magnitudes not dereddened for Galactic extinction | apply dereddening downstream |
+| 6 | Per-band `n_inputs` read with a transposed cell index | one-line code fix; columns need recompute |
 
 ---
 
@@ -105,3 +107,43 @@ appeared twice (diagnostics `psf_fwhm`, HSC cluster script).
 ## 5. Galactic extinction
 
 The v0 merged catalog's anacal fluxes and magnitudes are NOT dereddened for Galactic dust extinction. Users must apply a dereddening correction (for example using SFD or Planck dust maps) before using all flux or magnitude for colour measurements, photometric redshifts, or any analysis sensitive to extinction.
+
+## 6. Per-band `n_inputs` read with a transposed cell index
+
+**Problem.** The per-band visit-count columns
+`{r,i,z}_n_inputs` in the `measure`/`merge*` catalogs are unreliable.
+Many sources read **0 where the band fully covers the cell**, and a
+non-zero value can be a *neighbouring* cell's count. In the deep fields
+~3.8% of z (and ~0.2–0.3% of r/i) sources read 0 despite real fluxes and
+full coverage.
+
+**Cause.** A transposed cell-index lookup. `n_image_per_cell`
+(`measure_base.py`) keys the per-cell visit counts by `(cell_i, cell_j)`
+from the coadd's `provenance.contributions`, but the lookup in
+`measureCellCoadds` reads `n_image_cells.get((cell_id.x, cell_id.y))`
+where the cell was stored as `_CellId(x=cell_j, y=cell_i)` — so the key
+becomes `(cell_j, cell_i)`, the **transpose**. It is correct only on the
+diagonal (`i == j`) or where the covered-cell set is transpose-symmetric.
+
+Verified on tract 9569, patch (2,6), z-band: the coadd has 352 cells,
+**all with provenance** (`psf.bounds` cell set == provenance cell set
+exactly), yet **124 (35%) are transpose-asymmetric**, and exactly those
+cells' sources get a spurious 0.
+
+**Not a detection/flux problem.** Detection runs on the *intersection*
+of the three bands' PSF cell bounds, so every detected source has a real
+coadd + PSF (hence a real flux) in all three bands. This is a metadata
+bug only — shapes, fluxes, and detections are correct.
+
+**Fix.** One line in `measure_cell_coadds.py` — swap the lookup key back:
+
+```python
+n_vis = n_image_cells.get((int(cell_id.y), int(cell_id.x)), 0)   # was (cell_id.x, cell_id.y)
+```
+
+Because `psf.bounds == provenance` throughout the deep fields, the
+corrected count is > 0 for every detected source there (any residual 0
+would legitimately flag a PSF-but-no-visit cell). The fix corrects new
+runs; the existing `n_inputs` columns were written with the transpose
+and need either a recompute from the coadd provenance (no re-measure
+required) or a re-run.

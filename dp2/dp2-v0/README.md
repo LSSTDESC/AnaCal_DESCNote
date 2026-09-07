@@ -6,6 +6,8 @@ anacal/fpfs shear measurement on the LSST DP2 `deep_coadd` cell coadds, r/i/z,
 run through the same xlens pipeline as HSC PDR3. Repo `dp2`, skymap
 `lsst_cells_v2`, 820 tracts with `|b_gal| > 15`.
 
+Software: **AnaCal v0.8.2**, **xlens v0.8.2**.
+
 | stage | collection | datasets |
 |---|---|---|
 | systematics | `u/xiangchl/anacal-v0/systematics` | 81,573 patches (mask, GAIA catalog) |
