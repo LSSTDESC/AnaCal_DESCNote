@@ -40,7 +40,7 @@ carries no `nImage`, so it is the only depth axis available. (TODO: need updates
 
 ### Mean shear vs shape
 
-![mean shear vs trace and |e|](./figures2/meanshear_shape.png)
+![mean shear vs trace and |ε|](./figures2/meanshear_shape.png)
 
 ### Clusters (positive control)
 
@@ -84,5 +84,5 @@ is available here that the wide field lacks.
 
 ### Mean shear vs shape and position
 
-![mean shear vs trace and |e|](./figures2_deep/meanshear_shape.png)
+![mean shear vs trace and |ε|](./figures2_deep/meanshear_shape.png)
 ![mean shear vs position](./figures2_deep/meanshear_position.png)

@@ -42,7 +42,7 @@ densities on the top and right axes (the DESCNote `corner_plot` style).
 | resolution `trace` | 0.482 | 0.499 |
 | shear response | 0.386 | 0.380 |
 | i / r / z mag (gauss2) | 22.35 / 22.89 / 22.02 | 22.38 / 22.98 / 22.05 |
-| \|w e1\| / \|w e2\| | 0.067 / 0.068 | 0.067 / 0.068 |
+| \|e₁\| / \|e₂\| (= w ε) | 0.067 / 0.068 | 0.067 / 0.068 |
 | detections | 28.2 M | 27.0 M |
 
 ![1-D distributions](./figures3_sim/hist1d_all.png)

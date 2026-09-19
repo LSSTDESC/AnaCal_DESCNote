@@ -42,11 +42,11 @@ One row per primary detection, already filtered by `is_primary` and
 | `ra`, `dec` | sky position [deg] |
 | `x1`, `x2` / `x1_det`, `x2_det` | patch pixel position, measurement / detection |
 | `object_id`, `tract_id`, `patch_x`, `patch_y` | provenance; bootstrap over `tract_id` |
-| `fpfs1_e1`, `fpfs1_e2` | band-combined FPFS ellipticity, WCS-corrected |
-| `fpfs1_de{1,2}_dg{1,2}` | shear response of the shape |
-| `wsel`, `dwsel_dg{1,2}` | selection weight and its shear response |
+| `fpfs1_e1`, `fpfs1_e2` | band-combined FPFS ellipticity **ε₁, ε₂**, WCS-corrected |
+| `fpfs1_de{1,2}_dg{1,2}` | shear response of the shape, ∂ε/∂g |
+| `wsel`, `dwsel_dg{1,2}` | selection weight **w** and its shear response |
 | `fpfs1_m00`, `fpfs1_m20` (+ `dm*_dg{1,2}`) | band-combined FPFS moments; `trace = (m00+m20)/m00` |
-| `esq`, `desq_dg{1,2}` | `e1²+e2²` and its response — for an \|e\| cut in one read |
+| `esq`, `desq_dg{1,2}` | ε₁²+ε₂² and its response — for an \|ε\| cut in one read |
 | `n_mask_base` | Gaussian-weighted masked fraction [0,1] |
 | `bkg`, `dbkg_dg{1,2}` | local background |
 | `<b>_flux_fpfs1`, `<b>_flux_fpfs1_err`, `<b>_s2n_fpfs1` | per-band FPFS flux and S/N (+ `d*_dg{1,2}`) |
@@ -106,10 +106,14 @@ catalog, before the diagnostics2 selection).
 
 ## Per-object shear
 
+**ε** (`fpfs1_e{1,2}`) is the measured ellipticity, **w** (`wsel`) the
+selection weight, and the weighted ellipticity that enters the estimator is
+**e = w ε**.
+
 ```python
-e1 = wsel * fpfs1_e1
-e2 = wsel * fpfs1_e2
-r1 = wsel * fpfs1_de1_dg1 + dwsel_dg1 * fpfs1_e1
+e1 = wsel * fpfs1_e1                                    # e₁ = w ε₁
+e2 = wsel * fpfs1_e2                                    # e₂ = w ε₂
+r1 = wsel * fpfs1_de1_dg1 + dwsel_dg1 * fpfs1_e1        # w ∂ε₁/∂g₁ + ε₁ ∂w/∂g₁
 r2 = wsel * fpfs1_de2_dg2 + dwsel_dg2 * fpfs1_e2
 response = 0.5 * (r1 + r2)
 ```
@@ -122,10 +126,10 @@ g2 = e2 / (response + response_sel).mean()
 
 `response` carries the shape response and the `wsel` part of the
 selection response. **`response_sel` — the response of the cuts below —
-is NOT included.** Those cuts are shear-dependent (an \|e\| or S/N cut
+is NOT included.** Those cuts are shear-dependent (an \|ε\| or S/N cut
 selects on the quantity being measured) and their response depends on
 how the sample is binned, so it has to be built once the binning is
-fixed; `desq_dg{1,2}` is there to build the ±γ variant of the \|e\| cut.
+fixed; `desq_dg{1,2}` is there to build the ±γ variant of the \|ε\| cut.
 Without it the shear is biased at the level of the selection response,
 typically a few percent.
 
@@ -141,11 +145,11 @@ Whole sample under the selection below: **20.02 M objects**,
 |---|---|---|
 | basic | `lsst_i_mag_gauss2` < 24 | 79.27% |
 | basic | `lsst_i_s2n_fpfs1` > 10 | 47.69% |
-| basic | \|e\| < 0.4 | 76.32% |
+| basic | \|ε\| < 0.4 | 76.32% |
 | basic | `n_mask_base` < 0.035 | 83.86% |
 | basic | trace > 0.15 | 72.98% |
 | colour | \|r−i\| < 1.3 / \|i−z\| < 1.3 | 92.62% / 96.91% |
-| PSF ellipticity | \|e1\| < 0.10 / \|e2\| < 0.10, in **all** of r,i,z | 99.18% / 98.34% |
+| PSF ellipticity | PSF \|e1\| < 0.10 / \|e2\| < 0.10, in **all** of r,i,z | 99.18% / 98.34% |
 | flux error | `flux_gauss2_err` < 200 (r) / < 400 (i) / < 600 (z) nJy | 94.57% / 89.84% / 90.27% |
 | | **all combined** | **20.63%** (30.19 M of 146.34 M) |
 
