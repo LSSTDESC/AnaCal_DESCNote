@@ -17,6 +17,9 @@ Software: **AnaCal v0.8.2**, **xlens v0.8.2**.
 | merge+z | `u/xiangchl/anacal-v0/merge_withz` | 820 tracts × (shape, redshift table, p(z) qp.Ensemble) |
 | diagnostics | `u/xiangchl/anacal-v0/diagnostics` | 820 × (meanshear, hist), basic cuts |
 | diagnostics2 | `u/xiangchl/anacal-v0/diagnostics2` | 820 × (meanshear, hist), full cuts — the figures below |
+| sim | `u/xiangchl/anacal-v0/sim_flagship` | 73,454 patch catalogs over 757 tracts (359 lost to zero noise-correlation) |
+| sim merge | `u/xiangchl/anacal-v0/sim_flagship_merged` | 757 tract catalogs, **129.87 M objects**, 144 columns, 99 GB — same schema as `merge` |
+| sim vs obs | `u/xiangchl/anacal-v0/sim_obs_compare` | 635 tracts (sim ∩ obs) × binned sim/obs histograms |
 
 Pipelines in `pipelines/`. Band weights are FIXED survey-wide (r 0.2735, i
 0.5373, z 0.1892 — the HSC values (need to update)); detection is the r,i,z
@@ -93,6 +96,33 @@ Galaxy number density over the DP2 shear footprint (whole merged
 catalog, before the diagnostics2 selection).
 
 ![galaxy number density](./figures2/ngal_all.png)
+
+## Image simulation (Flagship)
+
+Flagship galaxies drawn into the measured DP2 PSF, noise correlation and mask
+over the same 757 wide tracts, then measured with the identical pipeline —
+`sim_flagship_anacal_merged` has the same 144 columns as the observed merged
+catalog. The Flagship footprint is first rotated onto the DP2 sky (inverse ZYZ
+Euler (51, 73, 170)°); galaxy sizes use `r50 * sqrt(axis_ratio)`, since the
+catalog's `disk_r50`/`bulge_r50` are semi-major axes while GalSim's
+`half_light_radius` is circularised.
+
+![Flagship footprint rotation](./footprint_rotation.png)
+
+Sim vs obs over the 635 tracts common to both (obs solid, sim dashed):
+
+| quantity | sim | obs |
+|---|---|---|
+| resolution `trace` | 0.482 | 0.499 |
+| shear response | 0.386 | 0.380 |
+| i / r / z mag (gauss2) | 22.35 / 22.89 / 22.02 | 22.38 / 22.98 / 22.05 |
+| \|w e1\| / \|w e2\| | 0.067 / 0.068 | 0.067 / 0.068 |
+
+![1-D distributions](./figures3_sim/hist1d_all.png)
+![magnitude vs resolution](./figures3_sim/corner_mag_resolution.png)
+![magnitude vs response](./figures3_sim/corner_mag_response.png)
+![colour-magnitude, r−i](./figures3_sim/corner_cmd_i_rmi.png)
+![colour-magnitude, i−z](./figures3_sim/corner_cmd_i_imz.png)
 
 ## Per-object shear
 
