@@ -8,6 +8,13 @@ run through the same xlens pipeline as HSC PDR3. Repo `dp2`, skymap
 
 Software: **AnaCal v0.8.2**, **xlens v0.8.2**.
 
+| document | contents |
+|---|---|
+| [null_tests.md](null_tests.md) | mean shear vs PSF, photometry, survey properties, shape; cluster control — wide and deep |
+| [histograms.md](histograms.md) | 1-D and 2-D distributions of the catalog quantities — wide and deep |
+| [sim.md](sim.md) | Flagship image simulation and the sim-vs-obs comparison |
+| [KNOWN_PROBLEMS.md](KNOWN_PROBLEMS.md) | caveats to read before using v0 |
+
 | stage | collection | datasets |
 |---|---|---|
 | systematics | `u/xiangchl/anacal-v0/systematics` | 81,573 patches (mask, GAIA catalog) |
@@ -16,8 +23,8 @@ Software: **AnaCal v0.8.2**, **xlens v0.8.2**.
 | photo-z | `u/xiangchl/anacal-v0/photoz` | 81,249 patch (point estimates + p(z)) — FlexZBoost, riz gauss2 |
 | merge+z | `u/xiangchl/anacal-v0/merge_withz` | 820 tracts × (shape, redshift table, p(z) qp.Ensemble) |
 | diagnostics | `u/xiangchl/anacal-v0/diagnostics` | 820 × (meanshear, hist), basic cuts |
-| diagnostics2 | `u/xiangchl/anacal-v0/diagnostics2` | 820 × (meanshear, hist), full cuts — the figures below |
-| sim | `u/xiangchl/anacal-v0/sim_flagship` | 73,454 patch catalogs over 757 tracts (359 lost to zero noise-correlation) |
+| diagnostics2 | `u/xiangchl/anacal-v0/diagnostics2` | 820 × (meanshear, hist), full cuts — [null tests](null_tests.md), [histograms](histograms.md) |
+| sim | `u/xiangchl/anacal-v0/sim_flagship` | 73,454 patch catalogs over 757 tracts — [sim.md](sim.md) |
 | sim merge | `u/xiangchl/anacal-v0/sim_flagship_merged` | 757 tract catalogs, **129.87 M objects**, 144 columns, 99 GB — same schema as `merge` |
 | sim vs obs | `u/xiangchl/anacal-v0/sim_obs_compare` | 635 tracts (sim ∩ obs) × binned sim/obs histograms |
 
@@ -97,33 +104,6 @@ catalog, before the diagnostics2 selection).
 
 ![galaxy number density](./figures2/ngal_all.png)
 
-## Image simulation (Flagship)
-
-Flagship galaxies drawn into the measured DP2 PSF, noise correlation and mask
-over the same 757 wide tracts, then measured with the identical pipeline —
-`sim_flagship_anacal_merged` has the same 144 columns as the observed merged
-catalog. The Flagship footprint is first rotated onto the DP2 sky (inverse ZYZ
-Euler (51, 73, 170)°); galaxy sizes use `r50 * sqrt(axis_ratio)`, since the
-catalog's `disk_r50`/`bulge_r50` are semi-major axes while GalSim's
-`half_light_radius` is circularised.
-
-![Flagship footprint rotation](./footprint_rotation.png)
-
-Sim vs obs over the 635 tracts common to both (obs solid, sim dashed):
-
-| quantity | sim | obs |
-|---|---|---|
-| resolution `trace` | 0.482 | 0.499 |
-| shear response | 0.386 | 0.380 |
-| i / r / z mag (gauss2) | 22.35 / 22.89 / 22.02 | 22.38 / 22.98 / 22.05 |
-| \|w e1\| / \|w e2\| | 0.067 / 0.068 | 0.067 / 0.068 |
-
-![1-D distributions](./figures3_sim/hist1d_all.png)
-![magnitude vs resolution](./figures3_sim/corner_mag_resolution.png)
-![magnitude vs response](./figures3_sim/corner_mag_response.png)
-![colour-magnitude, r−i](./figures3_sim/corner_cmd_i_rmi.png)
-![colour-magnitude, i−z](./figures3_sim/corner_cmd_i_imz.png)
-
 ## Per-object shear
 
 ```python
@@ -172,93 +152,5 @@ Whole sample under the selection below: **20.02 M objects**,
 The PSF-ellipticity and flux-error cuts are *survey-properties* selections, so
 they choose where on the sky the sample comes from.
 
-## Diagnostics
-
-Raw per-tract sums stacked over 820 tracts, bootstrapped over tracts;
-p-values are per component against zero and treat bins as independent.
-Grey histogram = the sample fraction in each bin.
-
-### Mean shear vs PSF
-
-PSF ellipticity is the additive-bias test — leakage would show as a
-slope. γ₁ is flat (p = 0.12–0.89) and γ₂ is unremarkable in five of six
-panels after these cuts; PSF e2 (i) remains at p = 0.05.
-
-![mean shear vs PSF ellipticity](./figures2/meanshear_psf_shape.png)
-![mean shear vs PSF FWHM](./figures2/meanshear_psf_size.png)
-
-### Mean shear vs photometry
-
-![mean shear vs magnitude](./figures2/meanshear_mag.png)
-![mean shear vs S/N](./figures2/meanshear_snr.png)
-![mean shear vs colour](./figures2/meanshear_photometry.png)
-
-### Mean shear vs depth and survey properties
-
-`flux_gauss2_err` is a depth/seeing label rather than a galaxy property
-— DP2 carries no `nImage`, so it is the only depth axis available. (TODO: need updates)
-
-![mean shear vs flux error](./figures2/meanshear_fluxerr.png)
-![mean shear vs mask fractions](./figures2/meanshear_survey.png)
-![mean shear vs background](./figures2/meanshear_bkg.png)
-
-### Mean shear vs shape
-
-![mean shear vs trace and |e|](./figures2/meanshear_shape.png)
-
-### Distributions
-
-![1-D distributions](./figures2/hist_1d.png)
-![2-D distributions](./figures2/hist_2d.png)
-
-
-### Clusters
-
-Randomly selected massive low-z cluster to confirm we can get positive
-tangential shear
-
-![$\gamma$](./figures2/cluster_shear_gamma.png)
-![$\theta \gamma$](./figures2/cluster_shear.png)
-
-## Diagnostics — deep fields (EDFS, ECDFS, COSMOS)
-
-The same `diagnostics2` selection on the 43 deep-field tracts
-(`merge_withz_deep_fields`), with bin ranges re-measured for the ~1 mag
-deeper sample. Raw per-tract sums stacked over the 43 tracts, bootstrapped
-over tracts. Whole deep sample under the selection: **606,443 objects**,
-⟨γ₁⟩ = −0.00059, ⟨γ₂⟩ = −0.00019, mean response 0.379.
-
-### Mean shear vs PSF
-
-Across the six PSF-ellipticity panels γ₁ gives p = 0.05–0.61 and γ₂
-p = 0.36–0.93; the tightest are PSF e2 (r) and PSF e1 (i) in γ₁
-(p = 0.05–0.06), consistent with noise over the smaller deep footprint.
-
-![mean shear vs PSF ellipticity](./figures2_deep/meanshear_psf_shape.png)
-![mean shear vs PSF FWHM](./figures2_deep/meanshear_psf_size.png)
-
-### Mean shear vs photometry
-
-![mean shear vs magnitude](./figures2_deep/meanshear_mag.png)
-![mean shear vs S/N](./figures2_deep/meanshear_snr.png)
-![mean shear vs colour](./figures2_deep/meanshear_photometry.png)
-
-### Mean shear vs depth and survey properties
-
-The deep fields carry a per-band `n_inputs` (visit count), so a coverage
-panel is available here that the wide field lacks.
-
-![mean shear vs flux error](./figures2_deep/meanshear_fluxerr.png)
-![mean shear vs mask fractions](./figures2_deep/meanshear_survey.png)
-![mean shear vs background](./figures2_deep/meanshear_bkg.png)
-![mean shear vs coverage](./figures2_deep/meanshear_coverage.png)
-
-### Mean shear vs shape and position
-
-![mean shear vs trace and |e|](./figures2_deep/meanshear_shape.png)
-![mean shear vs position](./figures2_deep/meanshear_position.png)
-
-### Distributions
-
-![1-D distributions](./figures2_deep/hist_1d.png)
-![2-D distributions](./figures2_deep/hist_2d.png)
+Results under this selection: [null tests](null_tests.md) ·
+[histograms](histograms.md) · [image simulation](sim.md).
