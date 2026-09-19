@@ -30,15 +30,7 @@ The Flagship footprint lies elsewhere on the sky, so it is rotated onto the
 DP2 field with an inverse ZYZ Euler rotation (51, 73, 170)° before the truth
 catalog is cut into tracts and patches.
 
-![Flagship footprint rotation](./footprint_rotation.png)
-
-## Galaxy sizes
-
-Flagship `disk_r50` / `bulge_r50` are **semi-major** half-light radii, while
-GalSim's `half_light_radius` is the circularised one (`.shear(q=…)` conserves
-area). The renderer therefore passes `r50 * sqrt(axis_ratio)`. Without this
-the simulated galaxies come out systematically too large — the resolution
-median sat ~0.14 above the data before the fix.
+![Flagship footprint rotation](./figures3_sim/footprint_rotation.png)
 
 ## Sim vs obs
 
