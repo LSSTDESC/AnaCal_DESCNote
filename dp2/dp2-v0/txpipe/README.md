@@ -23,7 +23,7 @@ without the AnaCal healsparse footprint mask.
 | \|ε\| | < 0.4 |
 | `lsst_i_mag_gauss2` | < 24 |
 | colour \|r−i\|, \|i−z\| | < 1.5, < 1.5 |
-| PSF distortion \|e₁\|, \|e₂\| in r, i, z | < 0.07 |
+| PSF ellipticity \|g₁\|, \|g₂\| (shear-type `psf_g`) in r, i, z | < 0.035 (≈ distortion 0.07) |
 | `flux_gauss2_err` r / i / z [nJy] | < 200 / 400 / 600 |
 
 The selection response R_sel (±0.01 re-selection) is included in R. The diagnostics2

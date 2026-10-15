@@ -72,11 +72,11 @@ TXSourceSelectorAnaCal:
     i_hi_cut: 24.0
     z_hi_cut: 30.0
 
-    # Colour window (|b1 - b2| < cut), PSF distortion |e1|,|e2| < psf_e_cut in
-    # every band, and depth (fixed-aperture flux error, nJy).
+    # Colour window (|b1 - b2| < cut), PSF ellipticity |psf_g1|,|psf_g2| < psf_g_cut
+    # (shear-type g, ~ distortion/2) in every band, and depth (fixed-aperture flux error, nJy).
     ri_cut: 1.5
     iz_cut: 1.5
-    psf_e_cut: 0.07
+    psf_g_cut: 0.035
     r_flux_err_cut: 200.0
     i_flux_err_cut: 400.0
     z_flux_err_cut: 600.0
