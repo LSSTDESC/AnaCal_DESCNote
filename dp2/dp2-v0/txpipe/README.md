@@ -30,16 +30,6 @@ The selection response R_sel (±0.01 re-selection) is included in R. The diagnos
 selection of the [null tests](../null_tests.md) differs in colour (1.3 / 1.0) and
 PSF (0.06) and applies no healsparse mask.
 
-## Results
-
-| | N | R | σ_e | ⟨γ₁⟩ | ⟨γ₂⟩ | ξ+ amplitude | ξ− amplitude |
-|---|---|---|---|---|---|---|---|
-| masked | 14.62 M | 0.329 | 0.366 | −0.000028 | +0.00035 ± 0.00010 | 0.93 ± 0.07 | 0.95 ± 0.20 |
-| no mask | 25.76 M | 0.289 | 0.413 | +0.000002 | +0.00022 | 1.11 ± 0.06 | 1.06 ± 0.19 |
-
-Amplitudes are relative to the CCL fiducial (`data/fiducial_cosmology.yml`, n(z) from the
-selected photo-z), 5′–100′, TXPipe jackknife covariance. The per-bin mean shear agrees with
-the xlens diagnostics to < 0.05σ on the same sample.
 
 ## Figures
 
