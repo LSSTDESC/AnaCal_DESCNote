@@ -1,0 +1,146 @@
+# TXPipe AnaCal analysis, masked (copy of txpipe_test/anacal_analysis.yml; settings in anacal_config.yml).
+# Stages to run
+stages:
+  - name: TXCutShearCatalog
+    nprocess: 1   # run copy: no MPI-enabled h5py in either env
+    aliases:
+      shear_catalog: full_shear_catalog
+      cut_shear_catalog: shear_catalog
+  - name: TXSourceSelectorAnaCal    # select and split objects into source bins
+    nprocess: 1   # run copy: no MPI-enabled h5py in either env
+  # - name: TXSourceTomography   (run copy: needs the missing mock spectroscopic catalog; unused with input_pz: true)
+  #   threads_per_process: 8
+  - name: TXShearCalibration       # Calibrate and split the source sample tomographically
+    nprocess: 1   # run copy: no MPI-enabled h5py in either env
+  - name: TXSourceMaps             # make source g1 and g2 maps
+    nprocess: 1
+  # - name: TXMapPlots   (run copy: fails with the current matplotlib)
+  - name: TXTracerMetadata       # collate metadata
+  - name: TXJackknifeCentersSource     # Split the area into jackknife regions
+  - name: TXMockGaussianPhotozStack
+    aliases:
+      photoz_stack: shear_photoz_stack
+  - name: TXTwoPoint             # Compute real-space 2-point correlations
+    threads_per_process: 128
+    nprocess: 1
+    nodes: 1
+  # - name: TXBlinding   (run copy: no blinding for this test; also needs firecrown)
+  #   threads_per_process: 4
+  - name: TXTwoPointPlots        # Make plots of 2pt correlations
+    aliases:
+      twopoint_data_real: twopoint_data_real_raw   # run copy: unblinded TwoPoint output
+  - name: TXPhotozPlotSource          # Plot the bin n(z)
+    classname: TXPhotozPlot
+    aliases:
+        photoz_stack: shear_photoz_stack
+        nz_plot: nz_source
+  # - name: TXRealGaussianCovariance   (run copy: needs the blinded file; errors are TwoPoint's jackknife)
+  #   threads_per_process: 32
+  - name: TXDiagnosticQuantiles
+  - name: TXPSFMaps
+  - name: TXSourceDiagnosticPlots
+    nprocess: 1   # run copy: no MPI-enabled h5py in either env
+  - name: TXResponseInBins
+    nprocess: 1   # run copy: no MPI-enabled h5py in either env
+  # - name: PZRailSummarizeSource    # Run the DIR method on the lens sample to find n(z)
+  #   classname: PZRailSummarize
+  #   aliases:
+  #       tomography_catalog: shear_tomography_catalog
+  #       binned_catalog: binned_shear_catalog
+  #       model: source_direct_calibration_model
+  #       photoz_stack: shear_photoz_stack
+  #       photoz_realizations: source_photoz_realizations
+  # - name: NZDirInformerSource       # Prepare the DIR method inputs for the source sample
+  #   classname: NZDirInformer
+  #   aliases:
+  #       input: spectroscopic_catalog
+  #       model: source_direct_calibration_model
+  # - name: TXPSFMaps    # make PSF maps
+  # - name: TXFlagMaps
+  # - name: TXSimpleMaskSource       # combine maps to make a simple mask
+  # - name: TXSourceNoiseMaps      # Compute shear noise using rotations
+  # - name: TXPhotozStack
+  #   aliases:
+  #     tomography_catalog: shear_tomography_catalog
+  #     photoz_stack: shear_photoz_stack
+  # - name: TXDiagnosticQuantiles
+  # - name: TXSourceDiagnosticPlots      # Make a suite of diagnostic plots
+  # - name: TXRoweStatistics       # Compute and plot Rowe statistics
+  #   threads_per_process: 2
+  # - name: TXGalaxyStarShear      # Compute and plot the star-galaxy shear cross-correlation
+  # - name: PZRealizationsPlotSource     # Plot n(z) realizations
+  #   classname: PZRealizationsPlot
+  #   aliases:
+  #       photoz_realizations: source_photoz_realizations
+  #       photoz_realizations_plot: source_photoz_realizations_plot
+  # - name: TXConvergenceMaps      # Make convergence kappa maps from g1, g2 maps
+  # - name: TXConvergenceMapPlots   # Plot the convergence map
+    # Disabled since not yet synchronised with new Treecorr MPI
+    # - name: TXSelfCalibrationIA   # Self-calibration intrinsic alignments of galaxies
+
+    # Disabling these as they takes too long for a quick test.
+    # The latter two need NaMaster
+    # - name: TXRealGaussianCovariance   # Compute covariance of real-space correlations
+    # - name: TXFourierGaussianCovariance # Compute the C_ell covariance
+    # - name: TXFourierTJPCovariance # Compute the C_ell covariance
+    #   threads_per_process: 2
+
+
+# modules and packages to import that have pipeline
+# stages defined in them
+modules: >
+    txpipe
+
+# where to find any modules that are not in this repo,
+# and any other code we need.
+python_paths: []
+
+# Where to put outputs
+output_dir: /pscratch/sd/x/xiangchl/dp2/txpipe_test/data/anacal_dp2
+
+# How to run the pipeline: mini, parsl, or cwl
+launcher:
+    name: mini
+    interval: 1.0
+
+# Where to run the pipeline: cori-interactive, cori-batch, or local
+site:
+    name: nersc-interactive
+
+
+# configuration settings
+config: /global/homes/x/xiangchl/superonion/code/AnaCal_DESCNote/dp2/dp2-v0/txpipe/scripts/anacal_config.yml
+
+# On NERSC, set this before running:
+# export DATA=${LSST}/groups/WL/users/zuntz/data/metacal-testbed
+
+inputs:
+    # See README for paths to download these files
+    # full_shear_catalog: data/metadetect_dp2_ingest/shear_catalog.hdf5
+    # star_catalog: data/example/inputs/star_catalog.hdf5
+    # This file comes with the code
+    fiducial_cosmology: data/fiducial_cosmology.yml
+    # For the self-calibration extension we are not using Random_cat_source for now
+    # So it is set to Null, so the yaml intepreter returns a None value to python. 
+    lens_maps: none
+    depth_map: none
+    bright_object_map: none
+    density_maps: none
+    lens_tomography_catalog: none
+    binned_lens_catalog: none
+    binned_random_catalog: none
+    binned_random_catalog_sub: none
+    lens_photoz_stack: none
+    spectroscopic_catalog: data/example/inputs/mock_spectroscopic_catalog.hdf5
+    shear_tomography_classifier: none   # run copy: selector bins on mean_z (input_pz: true)
+    mask: /pscratch/sd/x/xiangchl/dp2/txpipe_test/data/dp2_fullcatalogs/mask.hdf5
+    full_shear_catalog: /pscratch/sd/x/xiangchl/dp2/txpipe_test/data/dp2_fullcatalogs/shear_catalog.hdf5
+        
+# if supported by the launcher, restart the pipeline where it left off
+# if interrupted
+resume: false
+# where to put output logs for individual stages
+log_dir: /pscratch/sd/x/xiangchl/dp2/txpipe_test/logs/analysis
+# where to put an overall parsl pipeline log
+pipeline_log: /pscratch/sd/x/xiangchl/dp2/txpipe_test/logs/analysis_log.txt
+# registry: {}   (run copy: local file inputs, no data registry in this env)

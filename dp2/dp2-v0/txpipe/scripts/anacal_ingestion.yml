@@ -1,0 +1,30 @@
+# TXPipe AnaCal ingest used for the DP2 v0 runs (copy of txpipe_test/anacal_ingestion.yml; settings in anacal_config.yml).
+# AnaCal ingest — runs TXIngestAnacal only.  Writes the shear catalog
+# into ``data/example/anacal_inputs`` which is then consumed by
+# ``examples/anacal/pipeline.yml``.
+
+stages:
+  - name: TXGenerateTractList
+  - name: TXIngestAnacal
+  - name: TXIngestHealsparseMask
+
+output_dir: /pscratch/sd/x/xiangchl/dp2/txpipe_test/data/dp2_fullcatalogs/
+
+launcher:
+    name: mini
+    interval: 1.0
+
+site:
+    name: local
+
+modules: >
+    txpipe
+
+config: /global/homes/x/xiangchl/superonion/code/AnaCal_DESCNote/dp2/dp2-v0/txpipe/scripts/anacal_config.yml
+inputs:
+    anacal_catalog: None
+    shear_mask: /global/cfs/cdirs/lsst/utilities/data-registry/lsst_desc_working/user/smau/rubin_dp2_wide_anacal_mask_0.2.0.hsp
+
+resume: true
+log_dir: /pscratch/sd/x/xiangchl/dp2/txpipe_test/logs/ingest
+pipeline_log: /pscratch/sd/x/xiangchl/dp2/txpipe_test/logs/ingest_log.txt
